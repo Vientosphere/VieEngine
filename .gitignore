@@ -1,9 +1,23 @@
-# Build & Binaries
+# Derlenmiş İkilikler / Binary & Executables
 *.exe
 *.o
 *.obj
+*.dll
+*.lib
+*.a
 
-# Raylib / Temp
-raylib_setup/
+# Başlatıcılar ve Geçici Betikler
+*.bat
+*.cmd
+*.ps1
+
+# IDE & Editor Dosyaları
 .vscode/
 .idea/
+*.user
+
+# Geçici / Çıktı Klasörleri
+bin/
+build/
+obj/
+raylib_setup/
