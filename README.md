@@ -1,6 +1,6 @@
 # 🌪️ VieEngine
 
-**VieEngine**, C++ dili ile geliştirilen, hafif ve modüler bir 2D/3D oyun motoru projesidir.
+**VieEngine**, C++ dili ile geliştirilen, hafif ve modüler bir 3D oyun motoru projesidir.
 
 ---
 
@@ -8,7 +8,7 @@
 
 Projenin temel amacı; karmaşık ve ağır oyun motorlarının getirdiği yüklerden uzak, doğrudan bellek ve donanım kontrolünü temel alan sade bir motor mimarisi oluşturmaktır.
 
-* **Render:** 2D ve 3D çizim işlemleri için **Raylib** kütüphanesi kullanılmaktadır.
+* **Render:** 3D çizim işlemleri için **Raylib** kütüphanesi kullanılmaktadır.
 * **Fizik:** 3D uzayda katı cisim (rigid body) ve çarpışma simülasyonları için **Bullet3 Physics** entegrasyonu hedeflenmektedir.
 * **Dil & Standart:** C++ (MinGW-w64 derleyici altyapısı).
 
@@ -18,8 +18,7 @@ Projenin temel amacı; karmaşık ve ağır oyun motorlarının getirdiği yükl
 
 - [x] **Oyun Döngüsü (Game Loop):** Sabit 60 FPS hedefli ana çalışma döngüsü.
 - [x] **Girdi Yönetimi (Input):** Gerçek zamanlı klavye dinleme (WASD, aksiyon tuşları).
-- [x] **2D Render:** Ekran uzayında temel şekil ve metin çizimleri.
-- [x] **Sınır Kontrolleri:** Pencere kenarlık çarpışma ve konum kısıtlama mantığı.
+- [x] **3D Render:** 3D düzlemde temel x,y,z hareketleri.
 
 ---
 
