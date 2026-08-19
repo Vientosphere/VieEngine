@@ -1,0 +1,9 @@
+# Build & Binaries
+*.exe
+*.o
+*.obj
+
+# Raylib / Temp
+raylib_setup/
+.vscode/
+.idea/
