@@ -1,4 +1,4 @@
-#include "raylib.h"
+#include "raylib.h" // raylib kutuphanesini cagiriyoruz burda
 
 int main() {
     // Pencereyi ac ve 60 FPS'e sabitle
