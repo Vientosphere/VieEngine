@@ -1,17 +1,34 @@
-# VieEngine
+# 🌪️ VieEngine
 
-VieEngine is a custom, lightweight C++ game engine project built by **Viento**, powered by **Raylib** for rendering and targeted for 3D physics integration with **Bullet3**.
+**VieEngine** is a lightweight, modern C++ Game & Simulation Engine crafted by **Viento**.  
+Combining the elegance of French *"Vie"* (Life) with the raw velocity of Spanish *"Viento"* (Wind), VieEngine is designed to be fast, modular, and developer-friendly.
 
-## Current Features (v0.01 Pre-Alpha)
-- 60 FPS Game Loop
-- Dynamic Keyboard & Input Handling (WASD / Movement / Actions)
-- Bounding Box & Screen Clamping Physics
-- Color Switching System
+---
 
-## Tech Stack
+## 🎯 Architecture & Roadmap
+
+- [x] **Core Game Loop:** Rock-solid 60 FPS update/render pipeline.
+- [x] **Input Subsystem:** Real-time keyboard event polling & action mapping.
+- [x] **2D Primitive Renderer:** High-performance hardware-accelerated drawing via **Raylib**.
+- [x] **Boundary Physics:** Screen-space clamping & collision detection.
+- [ ] **Modular Architecture:** OOP abstraction (`Engine`, `Window`, `Input`, `Entity`).
+- [ ] **3D World & Camera System:** Perspective rendering & spatial transformations.
+- [ ] **3D Physics Pipeline:** Real-time rigid body simulation integrated with **Bullet3 Physics**.
+
+---
+
+## 🛠️ Tech Stack
 - **Language:** C++
-- **Graphics/Windowing:** Raylib
-- **Physics (Upcoming):** Bullet3 Physics Engine
+- **Graphics & Windowing:** Raylib
+- **Physics Backend:** Bullet3 (In Progress)
+- **Compiler Toolchain:** GCC (MinGW-w64)
 
-## Author
-Created with passion by **Viento**.
+---
+
+## 🚀 Quick Start
+Run `Derle_Ve_Baslat.bat` to compile the engine and launch the demo sandbox in one click.
+
+---
+
+## 👤 Author
+- **Lead Developer:** Viento
