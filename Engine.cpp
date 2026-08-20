@@ -71,7 +71,7 @@ void Engine::Render() {
         EndMode3D();
 
         // 2D Arayüz Bilgileri
-        DrawText("VieEngine v0.02 - Faz 1 Modüler Mimari", 20, 20, 20, SKYBLUE);
+        DrawText("VieEngine v0.02", 20, 20, 20, SKYBLUE);
         DrawText("WASD: Hareket | R,G,B: Renk | X: Çıkış", 20, 50, 16, GRAY);
         DrawFPS(ekranGenisligi - 90, 20);
 

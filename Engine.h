@@ -5,8 +5,8 @@
 // Motorun ana çalışma mantığını yöneten sınıf
 class Engine {
 public:
-    Engine();  // Kurucu: Başlangıç değişkenlerini ayarlar
-    ~Engine(); // Yıkıcı: Bellek ve pencere temizliğini yapar
+    Engine();  // Kurucu: Başlangıç
+    ~Engine(); // Yıkıcı: Bellek ve pencere temizliği
 
     // Motorun yaşam döngüsü fonksiyonları
     void Init(int genislik, int yukseklik, const char* baslik);
