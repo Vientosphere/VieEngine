@@ -68,7 +68,7 @@ void Engine::Update() {
 
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 mouseDelta = GetMouseDelta();
-        kameraYaw   += mouseDelta.x * 0.15f;
+        kameraYaw   -= mouseDelta.x * 0.15f; // Sağa çekince sağa dönmesi için eksi (-) yapıldı
         kameraPitch -= mouseDelta.y * 0.15f;
 
         if (kameraPitch > 89.0f)  kameraPitch = 89.0f;
