@@ -2,18 +2,19 @@
 
 #include "raylib.h"
 
-// 3D dünyadaki tüm nesnelerin temel yapısı
+// 3D uzaydaki bir nesneyi temsil eden temel yapı
 struct Entity {
-    Vector3 pozisyon; // Dünyadaki konumu (X, Y, Z)
-    Vector3 boyut;    // Genişlik, Yükseklik, Derinlik
-    Color renk;       // Nesnenin rengi
+    Vector3 pozisyon; // Konum (X, Y, Z)
+    Vector3 boyut;    // Boyut (Genişlik, Yükseklik, Derinlik)
+    Color renk;       // Gövde rengi
+    Color cizgiRengi; // Kenar çizgisi rengi
     bool cizgiler;    // Kenar çizgileri çizilsin mi?
 
-    // Nesneyi ekrana çizen temel fonksiyon
+    // Nesneyi 3D uzayda çizen fonksiyon
     void Ciz() const {
         DrawCubeV(pozisyon, boyut, renk);
         if (cizgiler) {
-            DrawCubeWiresV(pozisyon, boyut, WHITE);
+            DrawCubeWiresV(pozisyon, boyut, cizgiRengi);
         }
     }
 };

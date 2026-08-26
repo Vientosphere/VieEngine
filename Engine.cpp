@@ -1,15 +1,14 @@
 #include "Engine.h"
 
 Engine::Engine()
-    : ekranGenisligi(1280), ekranYuksekligi(720), calisiyorMu(false),
-      kontrolEdilenIndeks(0), hareketHizi(0.3f) {
+    : ekranGenisligi(1280), ekranYuksekligi(720), calisiyorMu(false) {
     
-    // Kameranın başlangıç değerleri
+    // Blender tarzı perspektif editör kamerası
     kamera = { 0 };
-    kamera.position = (Vector3){ 0.0f, 15.0f, 20.0f };
-    kamera.target = (Vector3){ 0.0f, 2.0f, 0.0f };
-    kamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    kamera.fovy = 60.0f;
+    kamera.position = (Vector3){ 7.0f, 6.0f, 7.0f }; // 3D uzayda çapraz yukarıda durur
+    kamera.target = (Vector3){ 0.0f, 0.0f, 0.0f };   // Merkeze (orijine) bakar
+    kamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };       // Yukarı yön Y eksenidir
+    kamera.fovy = 45.0f;
     kamera.projection = CAMERA_PERSPECTIVE;
 }
 
@@ -45,51 +44,53 @@ void Engine::Run() {
 }
 
 void Engine::Update() {
-    // Kontrol edilen geçerli bir nesne varsa hareket ettir
-    if (!nesneler.empty() && kontrolEdilenIndeks < static_cast<int>(nesneler.size())) {
-        Entity& aktifKup = nesneler[kontrolEdilenIndeks];
-
-        // WASD ile hareket
-        if (IsKeyDown(KEY_W)) aktifKup.pozisyon.z -= hareketHizi;
-        if (IsKeyDown(KEY_S)) aktifKup.pozisyon.z += hareketHizi;
-        if (IsKeyDown(KEY_A)) aktifKup.pozisyon.x -= hareketHizi;
-        if (IsKeyDown(KEY_D)) aktifKup.pozisyon.x += hareketHizi;
-
-        // Yukarı / Aşağı yükselme (Boşluk / Sol Shift)
-        if (IsKeyDown(KEY_SPACE)) aktifKup.pozisyon.y += hareketHizi;
-        if (IsKeyDown(KEY_LEFT_SHIFT)) aktifKup.pozisyon.y -= hareketHizi;
-
-        // Renk değiştirme kontrolleri
-        if (IsKeyDown(KEY_R)) aktifKup.renk = RED;
-        if (IsKeyDown(KEY_G)) aktifKup.renk = GREEN;
-        if (IsKeyDown(KEY_B)) aktifKup.renk = BLUE;
-        if (IsKeyDown(KEY_Y)) aktifKup.renk = YELLOW;
+    // Farenin sağ tıkına basılı tutarken kamerayı serbestçe döndür (Orbital / Free Camera)
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+        UpdateCamera(&kamera, CAMERA_FREE);
     }
 
-    // Çıkış tuşu
-    if (IsKeyDown(KEY_ESCAPE) || IsKeyDown(KEY_X)) calisiyorMu = false;
+    // Çıkış kontrolü
+    if (IsKeyDown(KEY_ESCAPE)) {
+        calisiyorMu = false;
+    }
 }
 
 void Engine::Render() {
     BeginDrawing();
-        ClearBackground((Color){ 18, 18, 24, 255 }); // Modern koyu arka plan
+        // Blender tarzı profesyonel koyu gri editör arka planı
+        ClearBackground((Color){ 30, 31, 36, 255 });
 
-        // 3D Çizim Alanı
+        // --- 3D VIEWPORT BAŞLANGICI ---
         BeginMode3D(kamera);
-            // 3D Zemin Izgarası
-            DrawGrid(20, 2.0f);
 
-            // Sahnedeki tüm nesneleri döngüyle çiz
+            // 1. Zemin Izgarası (Grid)
+            DrawGrid(24, 1.0f);
+
+            // 2. Sahnedeki Varlıkları Çiz (Default 2x2x2 Küp vb.)
             for (const auto& nesne : nesneler) {
                 nesne.Ciz();
             }
-        EndMode3D();
 
-        // 2D Arayüz (HUD) Bilgileri
-        DrawText("Viento Engine v0.03 (Entity System)", 20, 20, 22, SKYBLUE);
-        DrawText("WASD: Hareket | Space / L-Shift: Yukari/Asagi | R,G,B,Y: Renk", 20, 50, 15, LIGHTGRAY);
-        DrawText(TextFormat("Sahnedeki Nesne Sayisi: %i", (int)nesneler.size()), 20, 75, 15, LIME);
-        
+            // 3. 3D Eksen Çizgileri (Kırmızı: X, Yeşil: Y, Mavi: Z)
+            // X Ekseni (Kırmızı)
+            DrawLine3D((Vector3){ 0.0f, 0.01f, 0.0f }, (Vector3){ 4.0f, 0.01f, 0.0f }, RED);
+            // Y Ekseni (Yeşil - Yukarı)
+            DrawLine3D((Vector3){ 0.0f, 0.0f, 0.0f }, (Vector3){ 0.0f, 4.0f, 0.0f }, GREEN);
+            // Z Ekseni (Mavi)
+            DrawLine3D((Vector3){ 0.0f, 0.01f, 0.0f }, (Vector3){ 0.0f, 0.01f, 4.0f }, BLUE);
+
+        EndMode3D();
+        // --- 3D VIEWPORT BİTİŞİ ---
+
+        // Sol Üst: Motor Bilgileri (HUD)
+        DrawText("Viento Engine 3D - Viewport", 20, 20, 20, RAYWHITE);
+        DrawText("Fare Sag Tik + WASD: Kamera Kontrolu | ESC: Cikis", 20, 48, 14, GRAY);
+
+        // Sol Alt: Eksen Bilgisi & İstatistikler
+        DrawText("Eksenler: X (Kirmizi) | Y (Yesil) | Z (Mavi)", 20, ekranYuksekligi - 40, 14, LIGHTGRAY);
+        DrawText(TextFormat("Nesneler: %i", (int)nesneler.size()), 20, ekranYuksekligi - 60, 14, SKYBLUE);
+
+        // Sağ Üst: FPS Göstergesi
         DrawFPS(ekranGenisligi - 90, 20);
 
     EndDrawing();
