@@ -1,6 +1,6 @@
 # 🌪️ Viento Engine
 
-**Viento Engine**, C++ dili ile geliştirilen, hafif ve modüler bir 3D oyun motoru projesidir.
+**Viento Engine**, C++ dili ile geliştirilen, hafif ve modüler bir 2D/3D oyun motoru projesidir.
 
 ---
 
@@ -8,24 +8,25 @@
 
 Projenin temel amacı; karmaşık ve ağır oyun motorlarının getirdiği yüklerden uzak, doğrudan bellek ve donanım kontrolünü temel alan sade bir motor mimarisi oluşturmaktır.
 
-* **Render:** 3D çizim işlemleri için **Raylib** kütüphanesi kullanılmaktadır.
+* **Render:** 2D ve 3D çizim işlemleri için **Raylib** kütüphanesi kullanılmaktadır.
 * **Fizik:** 3D uzayda katı cisim (rigid body) ve çarpışma simülasyonları için **Bullet3 Physics** entegrasyonu hedeflenmektedir.
 * **Dil & Standart:** C++ (MinGW-w64 derleyici altyapısı).
 
 ---
 
-## ⚙️ Mevcut Özellikler (v0.01)
+## ⚙️ Mevcut Özellikler (v0.03)
 
-- [x] **Oyun Döngüsü (Game Loop):** Sabit 60 FPS hedefli ana çalışma döngüsü.
-- [x] **Girdi Yönetimi (Input):** Gerçek zamanlı klavye dinleme (WASD, aksiyon tuşları).
-- [x] **3D Render:** 3D düzlemde temel x,y,z hareketleri.
+- [x] **Çekirdek Motor Mimarisi:** `Engine` sınıfı ve yaşam döngüsü (`Init`, `Update`, `Render`, `Shutdown`).
+- [x] **Varlık (Entity) Sistemi:** Sahneye dinamik olarak nesne (`Entity`) ekleme ve toplu çizim döngüsü.
+- [x] **3D Perspektif Kamera:** 3D uzay ve derinlik hesaplamaları.
+- [x] **Girdi Yönetimi:** Klavye ile nesne hareketi (X, Y, Z eksenleri) ve anlık renk yönetimi.
 
 ---
 
 ## 🗺️ Planlanan Geliştirmeler (Roadmap)
 
-- [ ] **Modüler Mimari (OOP):** `Engine`, `Input`, `Renderer` ve `Entity` sınıflarına ayrıştırma.
-- [ ] **3D Kamera & Koordinat Sistemi:** Perspektif kamera kontrolleri.
+- [ ] **Serbest 3D Kamera (Free-Fly Camera):** Editör içinde serbest dolaşım.
+- [ ] **Transform & Hiyerarşi:** Nesnelerin dönüş açıları (Rotation / Yaw-Pitch-Roll).
 - [ ] **Bullet3 Entegrasyonu:** Yerçekimi, kütle ve katı cisim çarpışma hesaplamaları.
 
 ---
@@ -40,4 +41,4 @@ Projeyi Windows üzerinde derlemek ve çalıştırmak için:
 ---
 
 ## 👤 Geliştirici
-* **Viento**
+* **Engin Yılmaz (Viento)**

@@ -1,17 +1,22 @@
 #pragma once
 
 #include "raylib.h"
+#include "Entity.h"
+#include <vector>
 
 // Motorun ana çalışma mantığını yöneten sınıf
 class Engine {
 public:
-    Engine();  // Kurucu: Başlangıç değişkenlerini ayarlar
-    ~Engine(); // Yıkıcı: Bellek ve pencere temizliğini yapar
+    Engine();  // Kurucu: Başlangıç
+    ~Engine(); // Yıkıcı: Bellek ve pencere temizliği
 
     // Motorun yaşam döngüsü fonksiyonları
     void Init(int genislik, int yukseklik, const char* baslik);
     void Run();
     void Shutdown();
+
+    // Sahneye nesne ekleme fonksiyonu
+    void NesneEkle(const Entity& yeniNesne);
 
 private:
     void Update(); // Mantık ve girdi hesaplamaları
@@ -25,9 +30,10 @@ private:
     // 3D Kamera
     Camera3D kamera;
 
-    // Test nesnesi (Küp) verileri
-    Vector3 kupPozisyonu;
-    float kupBoyutu;
+    // Dünyadaki tüm varlıkların (Entity) listesi
+    std::vector<Entity> nesneler;
+
+    // Kontrol edilen ana küpün nesne indeksi
+    int kontrolEdilenIndeks;
     float hareketHizi;
-    Color kupRengi;
 };
