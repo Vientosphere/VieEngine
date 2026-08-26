@@ -1,19 +1,18 @@
 #include "Engine.h"
+#include "raymath.h"
 
 Engine::Engine()
-    : ekranGenisligi(800), ekranYuksekligi(600), calisiyorMu(false),
-      kupBoyutu(4.0f), hareketHizi(0.3f), kupRengi(WHITE) {
-    
-    // Kameranın başlangıç değerleri
-    kamera = { 0 };
-    kamera.position = (Vector3){ 0.0f, 10.0f, 15.0f };
-    kamera.target = (Vector3){ 0.0f, 5.0f, 0.0f };
-    kamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    kamera.fovy = 75.0f;
-    kamera.projection = CAMERA_PERSPECTIVE;
+    : ekranGenisligi(1280), ekranYuksekligi(720), calisiyorMu(false),
+      kameraHizi(10.0f), kameraYaw(45.0f), kameraPitch(-30.0f),
+      seciliNesneIndeksi(-1) {
 
-    // Küpün başlangıç konumu
-    kupPozisyonu = (Vector3){ 0.0f, 1.0f, 2.0f };
+    // Varsayılan FOV 70 ile perspektif kamera
+    kamera = { 0 };
+    kamera.position = (Vector3){ 7.0f, 6.0f, 7.0f };
+    kamera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
+    kamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    kamera.fovy = 70.0f;
+    kamera.projection = CAMERA_PERSPECTIVE;
 }
 
 Engine::~Engine() {
@@ -36,6 +35,10 @@ void Engine::Shutdown() {
     }
 }
 
+void Engine::NesneEkle(const Entity& yeniNesne) {
+    nesneler.push_back(yeniNesne);
+}
+
 void Engine::Run() {
     while (calisiyorMu && !WindowShouldClose()) {
         Update();
@@ -44,35 +47,178 @@ void Engine::Run() {
 }
 
 void Engine::Update() {
-    // WASD ile küp hareketi
-    if (IsKeyDown(KEY_W)) kupPozisyonu.z -= hareketHizi;
-    if (IsKeyDown(KEY_S)) kupPozisyonu.z += hareketHizi;
-    if (IsKeyDown(KEY_A)) kupPozisyonu.x -= hareketHizi;
-    if (IsKeyDown(KEY_D)) kupPozisyonu.x += hareketHizi;
+    float dt = GetFrameTime();
 
-    // Renk değiştirme kontrolleri
-    if (IsKeyDown(KEY_R)) kupRengi = RED;
-    if (IsKeyDown(KEY_G)) kupRengi = GREEN;
-    if (IsKeyDown(KEY_B)) kupRengi = BLUE;
+    // 1. Mouse Tekerleği ile kamera hızını değiştirme
+    float tekerlek = GetMouseWheelMove();
+    if (tekerlek != 0.0f) {
+        kameraHizi += tekerlek * 2.5f;
+        if (kameraHizi < 1.0f) kameraHizi = 1.0f;
+        if (kameraHizi > 50.0f) kameraHizi = 50.0f;
+    }
 
-    // Çıkış tuşu
-    if (IsKeyDown(KEY_X)) calisiyorMu = false;
+    // 2. FOV Ayarı ([ ve ] tuşları ile)
+    if (IsKeyDown(KEY_LEFT_BRACKET) && kamera.fovy > 30.0f)  kamera.fovy -= 20.0f * dt;
+    if (IsKeyDown(KEY_RIGHT_BRACKET) && kamera.fovy < 110.0f) kamera.fovy += 20.0f * dt;
+
+    // 3. Unreal Tarzı Kamera Hareketi (Sağ tık basılıyken)
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        DisableCursor();
+    }
+
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+        Vector2 mouseDelta = GetMouseDelta();
+        kameraYaw   += mouseDelta.x * 0.15f;
+        kameraPitch -= mouseDelta.y * 0.15f;
+
+        if (kameraPitch > 89.0f)  kameraPitch = 89.0f;
+        if (kameraPitch < -89.0f) kameraPitch = -89.0f;
+
+        float yawRad   = kameraYaw * DEG2RAD;
+        float pitchRad = kameraPitch * DEG2RAD;
+
+        Vector3 ileri = {
+            cosf(pitchRad) * sinf(yawRad),
+            sinf(pitchRad),
+            cosf(pitchRad) * cosf(yawRad)
+        };
+        ileri = Vector3Normalize(ileri);
+
+        Vector3 sag = Vector3Normalize(Vector3CrossProduct(ileri, (Vector3){ 0.0f, 1.0f, 0.0f }));
+        Vector3 yukari = { 0.0f, 1.0f, 0.0f };
+
+        float anlikHiz = kameraHizi * dt;
+        if (IsKeyDown(KEY_W)) kamera.position = Vector3Add(kamera.position, Vector3Scale(ileri, anlikHiz));
+        if (IsKeyDown(KEY_S)) kamera.position = Vector3Subtract(kamera.position, Vector3Scale(ileri, anlikHiz));
+        if (IsKeyDown(KEY_D)) kamera.position = Vector3Add(kamera.position, Vector3Scale(sag, anlikHiz));
+        if (IsKeyDown(KEY_A)) kamera.position = Vector3Subtract(kamera.position, Vector3Scale(sag, anlikHiz));
+        if (IsKeyDown(KEY_E)) kamera.position = Vector3Add(kamera.position, Vector3Scale(yukari, anlikHiz));
+        if (IsKeyDown(KEY_Q)) kamera.position = Vector3Subtract(kamera.position, Vector3Scale(yukari, anlikHiz));
+
+        kamera.target = Vector3Add(kamera.position, ileri);
+    }
+
+    if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+        EnableCursor();
+    }
+
+    // 4. Normal Fare Modu (Nesne seçme)
+    if (!IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            Ray ray = GetMouseRay(GetMousePosition(), kamera);
+            seciliNesneIndeksi = -1;
+            float enYakinMesafe = 999999.0f;
+
+            for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
+                RayCollision carpi = GetRayCollisionBox(ray, nesneler[i].GetBoundingBox());
+                if (carpi.hit && carpi.distance < enYakinMesafe) {
+                    enYakinMesafe = carpi.distance;
+                    seciliNesneIndeksi = i;
+                }
+            }
+        }
+    }
+
+    // Seçimi iptal et veya çık
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        if (seciliNesneIndeksi != -1) {
+            seciliNesneIndeksi = -1;
+        } else {
+            calisiyorMu = false;
+        }
+    }
+}
+
+void Engine::CizSagAltGizmo() {
+    Vector3 kameraYonu = Vector3Normalize(Vector3Subtract(kamera.target, kamera.position));
+    
+    Camera3D gizmoKamera = { 0 };
+    gizmoKamera.position = Vector3Scale(kameraYonu, -3.5f);
+    gizmoKamera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
+    gizmoKamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    gizmoKamera.fovy = 50.0f;
+    gizmoKamera.projection = CAMERA_PERSPECTIVE;
+
+    int gizmoBoyut = 120;
+    int gizmoX = ekranGenisligi - gizmoBoyut - 20;
+    int gizmoY = ekranYuksekligi - gizmoBoyut - 20;
+
+    DrawRectangleRounded((Rectangle){ (float)gizmoX, (float)gizmoY, (float)gizmoBoyut, (float)gizmoBoyut }, 0.2f, 4, (Color){ 20, 22, 28, 200 });
+    DrawRectangleRoundedLines((Rectangle){ (float)gizmoX, (float)gizmoY, (float)gizmoBoyut, (float)gizmoBoyut }, 0.2f, 4, (Color){ 60, 65, 80, 255 });
+
+    BeginScissorMode(gizmoX, gizmoY, gizmoBoyut, gizmoBoyut);
+    BeginMode3D(gizmoKamera);
+
+        DrawLine3D((Vector3){ 0.0f, 0.0f, 0.0f }, (Vector3){ 1.0f, 0.0f, 0.0f }, RED);
+        DrawSphere((Vector3){ 1.0f, 0.0f, 0.0f }, 0.1f, RED);
+
+        DrawLine3D((Vector3){ 0.0f, 0.0f, 0.0f }, (Vector3){ 0.0f, 1.0f, 0.0f }, GREEN);
+        DrawSphere((Vector3){ 0.0f, 1.0f, 0.0f }, 0.1f, GREEN);
+
+        DrawLine3D((Vector3){ 0.0f, 0.0f, 0.0f }, (Vector3){ 0.0f, 0.0f, 1.0f }, BLUE);
+        DrawSphere((Vector3){ 0.0f, 0.0f, 1.0f }, 0.1f, BLUE);
+
+        DrawSphere((Vector3){ 0.0f, 0.0f, 0.0f }, 0.06f, WHITE);
+
+    EndMode3D();
+    EndScissorMode();
+
+    DrawText("X", gizmoX + gizmoBoyut - 20, gizmoY + gizmoBoyut / 2 - 5, 12, RED);
+    DrawText("Y", gizmoX + gizmoBoyut / 2 - 4, gizmoY + 8, 12, GREEN);
+    DrawText("Z", gizmoX + 12, gizmoY + gizmoBoyut - 20, 12, BLUE);
 }
 
 void Engine::Render() {
     BeginDrawing();
-        ClearBackground(BLACK);
+        ClearBackground((Color){ 30, 31, 36, 255 });
 
-        // 3D Çizim Alanı
+        // --- 3D VIEWPORT ---
         BeginMode3D(kamera);
-            DrawGrid(12, 2.0f);
-            DrawCube(kupPozisyonu, kupBoyutu, kupBoyutu, kupBoyutu, kupRengi);
-            DrawCubeWires(kupPozisyonu, kupBoyutu, kupBoyutu, kupBoyutu, WHITE);
-        EndMode3D();
 
-        // 2D Arayüz Bilgileri
-        DrawText("VieEngine v0.02", 20, 20, 20, SKYBLUE);
-        DrawText("WASD: Hareket | R,G,B: Renk | X: Çıkış", 20, 50, 16, GRAY);
+            // Zemin Izgarası
+            DrawGrid(24, 1.0f);
+
+            // Sahnedeki Varlıkları Çiz
+            for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
+                bool secili = (i == seciliNesneIndeksi);
+                nesneler[i].Ciz(secili);
+
+                // Yalnızca obje seçiliyken üzerinde yerel 3D eksen çizgilerini (Gizmo) göster
+                if (secili) {
+                    Vector3 pos = nesneler[i].pozisyon;
+                    float gizmoUzunluk = 2.5f;
+
+                    DrawLine3D(pos, (Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, RED);
+                    DrawSphere((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, 0.15f, RED);
+
+                    DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, GREEN);
+                    DrawSphere((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, 0.15f, GREEN);
+
+                    DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, BLUE);
+                    DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, 0.15f, BLUE);
+                }
+            }
+
+        EndMode3D();
+        // --- 3D VIEWPORT BİTİŞİ ---
+
+        // Sol Üst: Motor Bilgileri (HUD)
+        DrawText("Viento Engine 3D - Viewport", 20, 20, 20, RAYWHITE);
+        DrawText("Fare Sol Tik: Obje Sec | Sag Tik + WASD/QE: Unreal Kamera", 20, 48, 14, LIGHTGRAY);
+        DrawText(TextFormat("Kamera Hizi: %.1fx (Tekerlek ile ayarla) | FOV: %.0f ([ / ] ile ayarla)", kameraHizi, kamera.fovy), 20, 70, 14, YELLOW);
+
+        // Sol Alt: Seçili Obje Bilgisi
+        if (seciliNesneIndeksi != -1) {
+            Vector3 pos = nesneler[seciliNesneIndeksi].pozisyon;
+            DrawText(TextFormat("Secili Obje #%i | Konum: (X: %.2f, Y: %.2f, Z: %.2f)", seciliNesneIndeksi, pos.x, pos.y, pos.z), 20, ekranYuksekligi - 40, 15, ORANGE);
+        } else {
+            DrawText("Secili Obje: Yok (Secmek icin 3D kupe sol tikla)", 20, ekranYuksekligi - 40, 14, DARKGRAY);
+        }
+
+        // Sağ Alt: 3D Yön Pusulası (World Position Gizmo)
+        CizSagAltGizmo();
+
+        // Sağ Üst: FPS Göstergesi
         DrawFPS(ekranGenisligi - 90, 20);
 
     EndDrawing();
