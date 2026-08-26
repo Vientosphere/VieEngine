@@ -28,7 +28,7 @@ private:
     int ekranYuksekligi;
     bool calisiyorMu;
 
-    // 3D Kamera ve Unreal tarzı hareket değişkenleri
+    // 3D Kamera ve serbest hareket değişkenleri
     Camera3D kamera;
     float kameraHizi;       // Tekerlek ile ayarlanan anlık hız
     float kameraYaw;        // Yatay bakış açısı (derece)

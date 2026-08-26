@@ -61,7 +61,7 @@ void Engine::Update() {
     if (IsKeyDown(KEY_LEFT_BRACKET) && kamera.fovy > 30.0f)  kamera.fovy -= 20.0f * dt;
     if (IsKeyDown(KEY_RIGHT_BRACKET) && kamera.fovy < 110.0f) kamera.fovy += 20.0f * dt;
 
-    // 3. Unreal Tarzı Kamera Hareketi (Sağ tık basılıyken)
+    // 3. Serbest Kamera Hareketi (Sağ tık basılıyken)
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         DisableCursor();
     }
@@ -204,7 +204,7 @@ void Engine::Render() {
 
         // Sol Üst: Motor Bilgileri (HUD)
         DrawText("Viento Engine 3D - Viewport", 20, 20, 20, RAYWHITE);
-        DrawText("Fare Sol Tik: Obje Sec | Sag Tik + WASD/QE: Unreal Kamera", 20, 48, 14, LIGHTGRAY);
+        DrawText("Fare Sol Tik: Obje Sec | Sag Tik + WASD/QE: Serbest Kamera", 20, 48, 14, LIGHTGRAY);
         DrawText(TextFormat("Kamera Hizi: %.1fx (Tekerlek ile ayarla) | FOV: %.0f ([ / ] ile ayarla)", kameraHizi, kamera.fovy), 20, 70, 14, YELLOW);
 
         // Sol Alt: Seçili Obje Bilgisi
