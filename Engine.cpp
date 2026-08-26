@@ -62,10 +62,11 @@ void Engine::Update() {
     if (IsKeyDown(KEY_RIGHT_BRACKET) && kamera.fovy < 110.0f) kamera.fovy += 20.0f * dt;
 
     // 3. Unreal Tarzı Kamera Hareketi (Sağ tık basılı tutulurken)
-    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-        // Fareyi pencereye kilitle
-        DisableCursor();
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        DisableCursor(); // Sadece sağ tıka basıldığı ilk an kilitle
+    }
 
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 mouseDelta = GetMouseDelta();
         kameraYaw   += mouseDelta.x * 0.15f;
         kameraPitch -= mouseDelta.y * 0.15f;
@@ -99,10 +100,14 @@ void Engine::Update() {
 
         // Hedefi güncelle
         kamera.target = Vector3Add(kamera.position, ileri);
-    } else {
-        EnableCursor();
+    }
 
-        // 4. Mouse Sol Tık ile 3D Nesne Seçme (Raycasting)
+    if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+        EnableCursor(); // Sağ tık bırakıldığı an fareyi serbest bırak
+    }
+
+    // 4. Normal Fare Modu (Sağ tık basılı değilken nesne seçme)
+    if (!IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             Ray ray = GetMouseRay(GetMousePosition(), kamera);
             seciliNesneIndeksi = -1;
