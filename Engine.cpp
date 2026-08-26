@@ -13,6 +13,11 @@ Engine::Engine()
     kamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
     kamera.fovy = 70.0f;
     kamera.projection = CAMERA_PERSPECTIVE;
+
+    // Kameranın başlangıçtaki bakış yönünden Yaw ve Pitch açılarını hesapla
+    Vector3 bakisYonu = Vector3Normalize(Vector3Subtract(kamera.target, kamera.position));
+    kameraPitch = asinf(bakisYonu.y) * RAD2DEG;
+    kameraYaw   = atan2f(bakisYonu.x, bakisYonu.z) * RAD2DEG;
 }
 
 Engine::~Engine() {
@@ -64,6 +69,7 @@ void Engine::Update() {
     // 3. Serbest Kamera Hareketi (Sağ tık basılıyken)
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         DisableCursor();
+        GetMouseDelta(); // İlk tıklamadaki sıçrama/delta farkını yut
     }
 
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
