@@ -25,11 +25,20 @@ Engine::~Engine() {
 }
 
 void Engine::Init(int genislik, int yukseklik, const char* baslik) {
-    ekranGenisligi = genislik;
-    ekranYuksekligi = yukseklik;
+    // 1. Kenarlıksız pencere ve Yüksek DPI bayraklarını ayarla
+    SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_TOPMOST | FLAG_MSAA_4X_HINT);
 
+    // 2. Birincil monitörün çözünürlüğünü algıla
+    int monitor = GetCurrentMonitor();
+    ekranGenisligi = GetMonitorWidth(monitor);
+    ekranYuksekligi = GetMonitorHeight(monitor);
+
+    // 3. Monitör boyutunda tam ekran penceresiz (Borderless Fullscreen) aç
     InitWindow(ekranGenisligi, ekranYuksekligi, baslik);
-    SetTargetFPS(60);
+    SetWindowPosition(0, 0);
+
+    // 4. FPS sınırını tamamen kaldır (Uncapped FPS)
+    SetTargetFPS(0);
     calisiyorMu = true;
 }
 
@@ -208,24 +217,37 @@ void Engine::Render() {
         EndMode3D();
         // --- 3D VIEWPORT BİTİŞİ ---
 
-        // Sol Üst: Motor Bilgileri (HUD)
-        DrawText("Viento Engine 3D - Viewport", 20, 20, 20, RAYWHITE);
-        DrawText("Fare Sol Tik: Obje Sec | Sag Tik + WASD/QE: Serbest Kamera", 20, 48, 14, LIGHTGRAY);
-        DrawText(TextFormat("Kamera Hizi: %.1fx (Tekerlek ile ayarla) | FOV: %.0f ([ / ] ile ayarla)", kameraHizi, kamera.fovy), 20, 70, 14, YELLOW);
+        // --- 2D ARAYÜZ (HUD) & OKUNAKLI TİPOGRAFİ ---
+        
+        // Sol Üst Bilgi Paneli (Yarı saydam modern arka plan kutucuğu ile keskin okuma)
+        DrawRectangleRounded((Rectangle){ 20.0f, 20.0f, 480.0f, 95.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
+        DrawRectangleRoundedLines((Rectangle){ 20.0f, 20.0f, 480.0f, 95.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
 
-        // Sol Alt: Seçili Obje Bilgisi
+        DrawText("VIENTO ENGINE 3D - VIEWPORT", 35, 32, 18, (Color){ 240, 245, 255, 255 });
+        DrawText("Fare Sol Tik: Obje Sec | Sag Tik + WASD/QE: Serbest Kamera", 35, 58, 14, (Color){ 170, 180, 200, 255 });
+        DrawText(TextFormat("Kamera Hizi: %.1fx (Tekerlek) | FOV: %.0f ([ / ]) | ESC: Cikis", kameraHizi, kamera.fovy), 35, 80, 14, (Color){ 255, 205, 80, 255 });
+
+        // Sol Alt: Seçili Obje Durum Paneli
+        DrawRectangleRounded((Rectangle){ 20.0f, (float)(ekranYuksekligi - 65), 420.0f, 45.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
+        DrawRectangleRoundedLines((Rectangle){ 20.0f, (float)(ekranYuksekligi - 65), 420.0f, 45.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
+
         if (seciliNesneIndeksi != -1) {
             Vector3 pos = nesneler[seciliNesneIndeksi].pozisyon;
-            DrawText(TextFormat("Secili Obje #%i | Konum: (X: %.2f, Y: %.2f, Z: %.2f)", seciliNesneIndeksi, pos.x, pos.y, pos.z), 20, ekranYuksekligi - 40, 15, ORANGE);
+            DrawText(TextFormat("SECILI OBJE #%i | Konum: (%.2f, %.2f, %.2f)", seciliNesneIndeksi, pos.x, pos.y, pos.z), 35, ekranYuksekligi - 52, 14, (Color){ 255, 140, 50, 255 });
         } else {
-            DrawText("Secili Obje: Yok (Secmek icin 3D kupe sol tikla)", 20, ekranYuksekligi - 40, 14, DARKGRAY);
+            DrawText("Secili Obje: Yok (Secmek icin kupe sol tiklayin)", 35, ekranYuksekligi - 52, 14, (Color){ 130, 140, 160, 255 });
         }
 
-        // Sağ Alt: 3D Yön Pusulası (World Position Gizmo)
+        // Sağ Alt: 3D Yön Pusulası (World Gizmo)
         CizSagAltGizmo();
 
-        // Sağ Üst: FPS Göstergesi
-        DrawFPS(ekranGenisligi - 90, 20);
+        // Sağ Üst: FPS & Çözünürlük Paneli (Uncapped FPS)
+        int fpsPanelWidth = 210;
+        DrawRectangleRounded((Rectangle){ (float)(ekranGenisligi - fpsPanelWidth - 20), 20.0f, (float)fpsPanelWidth, 65.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
+        DrawRectangleRoundedLines((Rectangle){ (float)(ekranGenisligi - fpsPanelWidth - 20), 20.0f, (float)fpsPanelWidth, 65.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
+
+        DrawText(TextFormat("FPS: %i", GetFPS()), ekranGenisligi - fpsPanelWidth, 32, 20, (Color){ 80, 255, 120, 255 });
+        DrawText(TextFormat("Cozunurluk: %ix%i", ekranGenisligi, ekranYuksekligi), ekranGenisligi - fpsPanelWidth, 58, 13, (Color){ 170, 180, 200, 255 });
 
     EndDrawing();
 }
