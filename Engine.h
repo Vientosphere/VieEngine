@@ -1,7 +1,7 @@
 #pragma once
 
-#include "raylib.h"
 #include "Entity.h"
+#include "raylib.h"
 #include <vector>
 
 // Viento Engine Çekirdek Sınıfı
@@ -19,16 +19,23 @@ public:
     void NesneEkle(const Entity& yeniNesne);
 
 private:
-    void Update(); // Kamera ve sahne güncellemeleri
-    void Render(); // 3D uzay ve editör arayüzü çizimi
+    void Update(); // Kamera, seçim ve mantık güncellemeleri
+    void Render(); // 3D uzay, gizmo ve arayüz çizimi
+    void CizSagAltGizmo(); // Sağ alttaki 3D yön pusulası
 
     // Pencere durumu
     int ekranGenisligi;
     int ekranYuksekligi;
     bool calisiyorMu;
 
-    // 3D Editör Kamerası (Blender tarzı yörünge/orbit kamera)
+    // 3D Kamera ve Unreal tarzı hareket değişkenleri
     Camera3D kamera;
+    float kameraHizi;       // Tekerlek ile ayarlanan anlık hız
+    float kameraYaw;        // Yatay bakış açısı (derece)
+    float kameraPitch;      // Dikey bakış açısı (derece)
+
+    // Seçim sistemi (-1: Hiçbir şey seçili değil)
+    int seciliNesneIndeksi;
 
     // Sahnedeki nesneler
     std::vector<Entity> nesneler;
