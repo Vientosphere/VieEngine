@@ -25,7 +25,7 @@ Projenin temel amacı; karmaşık ve ağır oyun motorlarının getirdiği yükl
 
 ## 🗺️ Planlanan Geliştirmeler (Roadmap)
 
-- [ ] **Serbest 3D Kamera (Free-Fly Camera):** Editör içinde serbest dolaşım.
+- [x] **Serbest 3D Kamera (Free-Fly Camera):** Editör içinde serbest dolaşım.
 - [ ] **Transform & Hiyerarşi:** Nesnelerin dönüş açıları (Rotation / Yaw-Pitch-Roll).
 - [ ] **Bullet3 Entegrasyonu:** Yerçekimi, kütle ve katı cisim çarpışma hesaplamaları.
 
