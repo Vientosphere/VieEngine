@@ -147,7 +147,7 @@ void Engine::CizSagAltGizmo() {
 
     // Mini pusula arkaplanı
     DrawRectangleRounded((Rectangle){ (float)gizmoX, (float)gizmoY, (float)gizmoBoyut, (float)gizmoBoyut }, 0.2f, 4, (Color){ 20, 22, 28, 200 });
-    DrawRectangleRoundedLines((Rectangle){ (float)gizmoX, (float)gizmoY, (float)gizmoBoyut, (float)gizmoBoyut }, 0.2f, 4, 1.0f, (Color){ 60, 65, 80, 255 });
+    DrawRectangleRoundedLines((Rectangle){ (float)gizmoX, (float)gizmoY, (float)gizmoBoyut, (float)gizmoBoyut }, 0.2f, 4, (Color){ 60, 65, 80, 255 });
 
     // Mini 3D çizim alanını kırp
     BeginScissorMode(gizmoX, gizmoY, gizmoBoyut, gizmoBoyut);
