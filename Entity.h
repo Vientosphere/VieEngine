@@ -60,28 +60,55 @@ struct Entity {
             rlScalef(olcek.x, olcek.y, olcek.z);
 
             Color govde = renk;
-            Color kenar = seciliMi ? ORANGE : cizgiRengi;
+            Color kenar = cizgiRengi;
+            Color secimTuruncusu = (Color){ 255, 140, 0, 255 }; // Canlı & Parlak Turuncu Vurgu
 
             if (tip == EntityTipi::KUP) {
                 DrawCube((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, govde);
-                if (seciliMi || cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, kenar);
+                if (cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, kenar);
+                
+                // Seçiliyse belirgin turuncu dış çizgi
+                if (seciliMi) {
+                    DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.03f, 1.03f, 1.03f, secimTuruncusu);
+                    DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.05f, 1.05f, 1.05f, secimTuruncusu);
+                }
             }
             else if (tip == EntityTipi::KURE) {
                 DrawSphere((Vector3){ 0.0f, 0.0f, 0.0f }, 0.5f, govde);
-                if (seciliMi || cizgiler) DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.5f, 16, 16, kenar);
+                if (cizgiler) DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.5f, 16, 16, kenar);
+                
+                // Seçiliyse belirgin turuncu küre kafesi
+                if (seciliMi) {
+                    DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.52f, 16, 16, secimTuruncusu);
+                }
             }
             else if (tip == EntityTipi::SILINDIR) {
                 DrawCylinder((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, govde);
-                if (seciliMi || cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, kenar);
+                if (cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, kenar);
+                
+                // Seçiliyse belirgin turuncu silindir kafesi
+                if (seciliMi) {
+                    DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.52f, 0.52f, 1.02f, 20, secimTuruncusu);
+                }
             }
             else if (tip == EntityTipi::UCGEN) {
                 DrawCylinder((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, govde);
-                if (seciliMi || cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, kenar);
+                if (cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, kenar);
+                
+                // Seçiliyse belirgin turuncu piramit kafesi
+                if (seciliMi) {
+                    DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.62f, 1.02f, 4, secimTuruncusu);
+                }
             }
             else if (tip == EntityTipi::DUZLEM) {
-                // Düzlem / Zemin (Geniş 2D Yüzey)
                 DrawCube((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 0.02f, 1.0f, govde);
-                if (seciliMi || cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 0.02f, 1.0f, kenar);
+                if (cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 0.02f, 1.0f, kenar);
+                
+                // Seçiliyse belirgin turuncu zemin çerçevesi
+                if (seciliMi) {
+                    DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.01f, 0.04f, 1.01f, secimTuruncusu);
+                    DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.02f, 0.05f, 1.02f, secimTuruncusu);
+                }
             }
         rlPopMatrix();
     }
