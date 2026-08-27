@@ -236,12 +236,13 @@ void Engine::Update() {
                     if (suruklenenEksen == EksenTipi::Z) secili.pozisyon.z += miktarZ;
                 }
                 else if (aktifMod == TransformModu::ROTASYON) {
-                    float rotSens = 2.5f;
+                    float rotSens = 2.0f;
                     if (IsKeyDown(KEY_LEFT_SHIFT)) rotSens *= 0.25f;
 
-                    if (suruklenenEksen == EksenTipi::X) secili.rotasyon.x -= miktarY * rotSens * 40.0f;
-                    if (suruklenenEksen == EksenTipi::Y) secili.rotasyon.y += miktarX * rotSens * 40.0f;
-                    if (suruklenenEksen == EksenTipi::Z) secili.rotasyon.z += miktarZ * rotSens * 40.0f;
+                    // Rotasyon yönleri farenin ekran izdüşümüne ve eksen dönüş yönüne göre doğal hale getirildi
+                    if (suruklenenEksen == EksenTipi::X) secili.rotasyon.x += miktarX * rotSens * 40.0f;
+                    if (suruklenenEksen == EksenTipi::Y) secili.rotasyon.y -= miktarY * rotSens * 40.0f;
+                    if (suruklenenEksen == EksenTipi::Z) secili.rotasyon.z -= miktarZ * rotSens * 40.0f;
                 }
                 else if (aktifMod == TransformModu::OLCEK) {
                     if (suruklenenEksen == EksenTipi::X) secili.olcek.x = fmaxf(0.1f, secili.olcek.x + miktarX);
