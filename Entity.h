@@ -6,11 +6,12 @@
 
 // Nesne Şekil Türleri
 enum class EntityTipi {
-    KUP,      // Cube
-    KURE,     // Sphere
-    SILINDIR, // Cylinder
-    UCGEN,    // Triangle / Pyramid
-    DUZLEM    // Plane / Ground
+    KUP,          // Cube
+    KURE,         // Sphere
+    SILINDIR,     // Cylinder
+    UCGEN,        // Triangle / Pyramid
+    DUZLEM,       // Plane / Ground
+    ISIK_KAYNAGI  // Light Source Gizmo / Anchor
 };
 
 // 3D uzaydaki bir nesneyi temsil eden temel yapı
@@ -24,15 +25,21 @@ struct Entity {
     Color cizgiRengi; // Kenar çizgisi rengi
     bool cizgiler;    // Kenar çizgileri çizilsin mi?
 
+    // Işık bağlantı indeksi (-1 ise standart şekil, >= 0 ise ışık kaynağı nesnesi)
+    int bagliIsikIndeksi;
+
     // Varsayılan kurucu
     Entity(EntityTipi nesneTipi = EntityTipi::KUP)
         : tip(nesneTipi),
-          pozisyon((Vector3){ 0.0f, (nesneTipi == EntityTipi::DUZLEM ? 0.0f : 1.0f), 0.0f }),
+          pozisyon((Vector3){ 0.0f, (nesneTipi == EntityTipi::DUZLEM ? 0.0f : (nesneTipi == EntityTipi::ISIK_KAYNAGI ? 4.0f : 1.0f)), 0.0f }),
           rotasyon((Vector3){ 0.0f, 0.0f, 0.0f }),
-          olcek((Vector3){ (nesneTipi == EntityTipi::DUZLEM ? 10.0f : 2.0f), (nesneTipi == EntityTipi::DUZLEM ? 0.05f : 2.0f), (nesneTipi == EntityTipi::DUZLEM ? 10.0f : 2.0f) }),
-          renk((Color){ 140, 145, 155, 255 }),
-          cizgiRengi((Color){ 230, 235, 245, 255 }),
-          cizgiler(true) {}
+          olcek((Vector3){ (nesneTipi == EntityTipi::DUZLEM ? 10.0f : (nesneTipi == EntityTipi::ISIK_KAYNAGI ? 0.6f : 2.0f)), 
+                           (nesneTipi == EntityTipi::DUZLEM ? 0.05f : (nesneTipi == EntityTipi::ISIK_KAYNAGI ? 0.6f : 2.0f)), 
+                           (nesneTipi == EntityTipi::DUZLEM ? 10.0f : (nesneTipi == EntityTipi::ISIK_KAYNAGI ? 0.6f : 2.0f)) }),
+          renk((nesneTipi == EntityTipi::ISIK_KAYNAGI ? (Color){ 255, 220, 60, 255 } : (Color){ 140, 145, 155, 255 })),
+          cizgiRengi((nesneTipi == EntityTipi::ISIK_KAYNAGI ? (Color){ 255, 240, 150, 255 } : (Color){ 230, 235, 245, 255 })),
+          cizgiler(true),
+          bagliIsikIndeksi(-1) {}
 
     // Nesnenin sınırlayıcı kutusu (Tıklama/Picking için)
     BoundingBox GetBoundingBox() const {
@@ -67,7 +74,6 @@ struct Entity {
                 DrawCube((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, govde);
                 if (cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, kenar);
                 
-                // Seçiliyse belirgin turuncu dış çizgi
                 if (seciliMi) {
                     DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.03f, 1.03f, 1.03f, secimTuruncusu);
                     DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.05f, 1.05f, 1.05f, secimTuruncusu);
@@ -77,7 +83,6 @@ struct Entity {
                 DrawSphere((Vector3){ 0.0f, 0.0f, 0.0f }, 0.5f, govde);
                 if (cizgiler) DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.5f, 16, 16, kenar);
                 
-                // Seçiliyse belirgin turuncu küre kafesi
                 if (seciliMi) {
                     DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.52f, 16, 16, secimTuruncusu);
                 }
@@ -86,7 +91,6 @@ struct Entity {
                 DrawCylinder((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, govde);
                 if (cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, kenar);
                 
-                // Seçiliyse belirgin turuncu silindir kafesi
                 if (seciliMi) {
                     DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.52f, 0.52f, 1.02f, 20, secimTuruncusu);
                 }
@@ -95,7 +99,6 @@ struct Entity {
                 DrawCylinder((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, govde);
                 if (cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, kenar);
                 
-                // Seçiliyse belirgin turuncu piramit kafesi
                 if (seciliMi) {
                     DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.62f, 1.02f, 4, secimTuruncusu);
                 }
@@ -104,10 +107,19 @@ struct Entity {
                 DrawCube((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 0.02f, 1.0f, govde);
                 if (cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 0.02f, 1.0f, kenar);
                 
-                // Seçiliyse belirgin turuncu zemin çerçevesi
                 if (seciliMi) {
                     DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.01f, 0.04f, 1.01f, secimTuruncusu);
                     DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.02f, 0.05f, 1.02f, secimTuruncusu);
+                }
+            }
+            else if (tip == EntityTipi::ISIK_KAYNAGI) {
+                // Işık Kaynağı Görselleştiricisi (Parlak Ampul / Yıldız Küresi)
+                DrawSphere((Vector3){ 0.0f, 0.0f, 0.0f }, 0.4f, (Color){ 255, 230, 80, 255 });
+                DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.45f, 8, 8, WHITE);
+                
+                // Seçiliyse sarı/turuncu ışık halkaları
+                if (seciliMi) {
+                    DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.6f, 10, 10, (Color){ 255, 180, 0, 255 });
                 }
             }
         rlPopMatrix();

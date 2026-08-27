@@ -2,6 +2,111 @@
 #include "raymath.h"
 #include "rlgl.h"
 
+// Gömülü GLSL Vertex Shader (OpenGL 3.3 Core)
+static const char* vertexShaderKaynak = R"(
+#version 330
+in vec3 vertexPosition;
+in vec2 vertexTexCoord;
+in vec3 vertexNormal;
+in vec4 vertexColor;
+
+uniform mat4 mvp;
+uniform mat4 matModel;
+uniform mat4 matNormal;
+
+out vec3 fragPosition;
+out vec2 fragTexCoord;
+out vec4 fragColor;
+out vec3 fragNormal;
+
+void main() {
+    fragPosition = vec3(matModel * vec4(vertexPosition, 1.0));
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+    fragNormal = normalize(vec3(matNormal * vec4(vertexNormal, 0.0)));
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+)";
+
+// Gömülü GLSL Fragment Shader (Point, Spot, Environment Işık Desteği)
+static const char* fragmentShaderKaynak = R"(
+#version 330
+#define MAKSIMUM_ISIK_SAYISI 8
+
+struct Isik {
+    int aktif;
+    int tip; // 0: Noktasal (Point), 1: Spot, 2: Ortam/Güneş (Environment/Directional)
+    vec3 pozisyon;
+    vec3 hedef;
+    vec4 renk;
+    float parlaklik;
+    float koniAcisi;
+};
+
+in vec3 fragPosition;
+in vec2 fragTexCoord;
+in vec4 fragColor;
+in vec3 fragNormal;
+
+uniform vec4 colDiffuse;
+uniform vec4 ortamIsigi;
+uniform vec3 viewPos;
+uniform Isik isiklar[MAKSIMUM_ISIK_SAYISI];
+
+out vec4 finalColor;
+
+void main() {
+    vec3 normal = normalize(fragNormal);
+    vec3 gorunumYonu = normalize(viewPos - fragPosition);
+    vec3 toplamAydinlatma = ortamIsigi.rgb;
+
+    for (int i = 0; i < MAKSIMUM_ISIK_SAYISI; i++) {
+        if (isiklar[i].aktif == 1) {
+            vec3 isikYonu = vec3(0.0);
+            float sonum = 1.0;
+
+            if (isiklar[i].tip == 2) {
+                // Environment / Directional (Güneş Işığı)
+                isikYonu = normalize(isiklar[i].pozisyon - isiklar[i].hedef);
+            } else {
+                // Point & Spot Light
+                vec3 fark = isiklar[i].pozisyon - fragPosition;
+                float mesafe = length(fark);
+                isikYonu = normalize(fark);
+                sonum = 1.0 / (1.0 + 0.09 * mesafe + 0.032 * (mesafe * mesafe));
+
+                if (isiklar[i].tip == 1) {
+                    // Spot Light Koni Hesaplaması
+                    vec3 spotYonu = normalize(isiklar[i].hedef - isiklar[i].pozisyon);
+                    float theta = dot(isikYonu, -spotYonu);
+                    if (theta > isiklar[i].koniAcisi) {
+                        float spotYogunluk = clamp((theta - isiklar[i].koniAcisi) / (1.0 - isiklar[i].koniAcisi), 0.0, 1.0);
+                        sonum *= spotYogunluk;
+                    } else {
+                        sonum = 0.0;
+                    }
+                }
+            }
+
+            // Diffuse (Yaygın Işık)
+            float NdotL = max(dot(normal, isikYonu), 0.0);
+            vec3 diffuse = isiklar[i].renk.rgb * NdotL * isiklar[i].parlaklik;
+
+            // Specular (Blinn-Phong Parlama)
+            vec3 yariVektor = normalize(isikYonu + gorunumYonu);
+            float NdotH = max(dot(normal, yariVektor), 0.0);
+            float spec = pow(NdotH, 32.0);
+            vec3 specular = isiklar[i].renk.rgb * spec * 0.3 * isiklar[i].parlaklik;
+
+            toplamAydinlatma += (diffuse + specular) * sonum;
+        }
+    }
+
+    vec4 nesneRengi = colDiffuse * fragColor;
+    finalColor = vec4(nesneRengi.rgb * toplamAydinlatma, nesneRengi.a);
+}
+)";
+
 Engine::Engine()
     : ekranGenisligi(1280), ekranYuksekligi(720), calisiyorMu(false),
       kameraHizi(10.0f), kameraYaw(45.0f), kameraPitch(-30.0f),
@@ -25,6 +130,17 @@ Engine::~Engine() {
     Shutdown();
 }
 
+void Engine::InitShader() {
+    isikShader = LoadShaderFromMemory(vertexShaderKaynak, fragmentShaderKaynak);
+
+    isikShader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(isikShader, "viewPos");
+    isikShader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocationAttrib(isikShader, "matModel");
+
+    ortamIsigiLoc = GetShaderLocation(isikShader, "ortamIsigi");
+    float ortamDegeri[4] = { 0.22f, 0.24f, 0.28f, 1.0f }; // Modern nötr ortam ışığı
+    SetShaderValue(isikShader, ortamIsigiLoc, ortamDegeri, SHADER_UNIFORM_VEC4);
+}
+
 void Engine::Init(int genislik, int yukseklik, const char* baslik) {
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_MSAA_4X_HINT);
 
@@ -35,11 +151,18 @@ void Engine::Init(int genislik, int yukseklik, const char* baslik) {
     InitWindow(ekranGenisligi, ekranYuksekligi, baslik);
     SetWindowPosition(0, 0);
     SetTargetFPS(0);
+
+    InitShader();
+
+    // Sahneye varsayılan 1 adet Güneş / Ortam Işığı ekle
+    IsikEkle(IsikTipi::ORTAM_GUNES, (Vector3){ 8.0f, 12.0f, 8.0f }, (Color){ 255, 245, 230, 255 }, 1.2f);
+
     calisiyorMu = true;
 }
 
 void Engine::Shutdown() {
     if (calisiyorMu) {
+        UnloadShader(isikShader);
         CloseWindow();
         calisiyorMu = false;
     }
@@ -49,30 +172,49 @@ void Engine::NesneEkle(const Entity& yeniNesne) {
     nesneler.push_back(yeniNesne);
 }
 
-void Engine::Run() {
-    while (calisiyorMu && !WindowShouldClose()) {
-        Update();
-        Render();
-    }
+void Engine::IsikEkle(IsikTipi tip, Vector3 pos, Color renk, float parlaklik) {
+    if (isiklar.size() >= MAKSIMUM_ISIK_SAYISI) return;
+
+    int index = static_cast<int>(isiklar.size());
+    Isik yeniIsik;
+    yeniIsik.tip = tip;
+    yeniIsik.pozisyon = pos;
+    yeniIsik.hedef = (Vector3){ 0.0f, 0.0f, 0.0f };
+    yeniIsik.renk = renk;
+    yeniIsik.parlaklik = parlaklik;
+    yeniIsik.koniAcisi = (tip == IsikTipi::SPOT) ? 35.0f : 45.0f;
+
+    // Shader Uniform Lokasyonlarını bağla
+    yeniIsik.aktifLoc = GetShaderLocation(isikShader, TextFormat("isiklar[%i].aktif", index));
+    yeniIsik.tipLoc = GetShaderLocation(isikShader, TextFormat("isiklar[%i].tip", index));
+    yeniIsik.posLoc = GetShaderLocation(isikShader, TextFormat("isiklar[%i].pozisyon", index));
+    yeniIsik.hedefLoc = GetShaderLocation(isikShader, TextFormat("isiklar[%i].hedef", index));
+    yeniIsik.renkLoc = GetShaderLocation(isikShader, TextFormat("isiklar[%i].renk", index));
+    yeniIsik.parlaklikLoc = GetShaderLocation(isikShader, TextFormat("isiklar[%i].parlaklik", index));
+    yeniIsik.koniAcisiLoc = GetShaderLocation(isikShader, TextFormat("isiklar[%i].koniAcisi", index));
+
+    isiklar.push_back(yeniIsik);
+
+    // Sahneye ışığı taşımak için görünür bir Işık Kaynağı Nesnesi ekle
+    Entity isikObjesi(EntityTipi::ISIK_KAYNAGI);
+    isikObjesi.pozisyon = pos;
+    isikObjesi.bagliIsikIndeksi = index;
+    NesneEkle(isikObjesi);
 }
 
-// Ray ile Gizmo eksenine tıklanıp tıklanmadığını dinamik boyutla algıla
 EksenTipi Engine::AlgilaGizmoEkseni(const Entity& nesne, Ray ray) {
     Vector3 pos = nesne.pozisyon;
     
-    // Gizmo mesafesi nesnenin boyutuna göre dinamik ölçeklenir
     float maxBoyut = fmaxf(nesne.olcek.x, fmaxf(nesne.olcek.y, nesne.olcek.z));
     float mesafe = fmaxf(2.0f, maxBoyut * 0.75f + 1.2f);
     float yaricap = fmaxf(0.35f, mesafe * 0.12f);
 
-    // X Ekseni Ucu (Kırmızı)
     BoundingBox xBox = {
         (Vector3){ pos.x + mesafe - yaricap, pos.y - yaricap, pos.z - yaricap },
         (Vector3){ pos.x + mesafe + yaricap, pos.y + yaricap, pos.z + yaricap }
     };
     if (GetRayCollisionBox(ray, xBox).hit) return EksenTipi::X;
 
-    // Y Ekseni Ucu (Yeşil) - Plane tipinde ve Ölçek modundayken devre dışı
     if (!(nesne.tip == EntityTipi::DUZLEM && aktifMod == TransformModu::OLCEK)) {
         BoundingBox yBox = {
             (Vector3){ pos.x - yaricap, pos.y + mesafe - yaricap, pos.z - yaricap },
@@ -81,14 +223,12 @@ EksenTipi Engine::AlgilaGizmoEkseni(const Entity& nesne, Ray ray) {
         if (GetRayCollisionBox(ray, yBox).hit) return EksenTipi::Y;
     }
 
-    // Z Ekseni Ucu (Mavi)
     BoundingBox zBox = {
         (Vector3){ pos.x - yaricap, pos.y - yaricap, pos.z + mesafe - yaricap },
         (Vector3){ pos.x + yaricap, pos.y + yaricap, pos.z + mesafe + yaricap }
     };
     if (GetRayCollisionBox(ray, zBox).hit) return EksenTipi::Z;
 
-    // Merkez Nokta
     BoundingBox merkezBox = {
         (Vector3){ pos.x - yaricap, pos.y - yaricap, pos.z - yaricap },
         (Vector3){ pos.x + yaricap, pos.y + yaricap, pos.z + yaricap }
@@ -101,9 +241,6 @@ EksenTipi Engine::AlgilaGizmoEkseni(const Entity& nesne, Ray ray) {
 void Engine::Update() {
     float dt = GetFrameTime();
     Vector2 farePos = GetMousePosition();
-
-    // Toolbar Alanında mıyız? (Y < 45 veya Açık Menü Bölgesi)
-    bool toolbarUzerinde = (farePos.y < 45.0f || (aktifMenu != MenuDurumu::KAPALI && farePos.x < 350.0f && farePos.y < 250.0f));
 
     // 1. Mouse Tekerleği ile kamera hızını değiştirme
     float tekerlek = GetMouseWheelMove();
@@ -121,7 +258,7 @@ void Engine::Update() {
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         DisableCursor();
         GetMouseDelta();
-        aktifMenu = MenuDurumu::KAPALI; // Kamerayı çevirirken menüyü kapat
+        aktifMenu = MenuDurumu::KAPALI;
     }
 
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
@@ -162,21 +299,23 @@ void Engine::Update() {
 
     // 4. Standart Editör Modu (Sağ tık basılı DEĞİLKEN)
     if (!IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-        // Mod Değiştirme Kısayolları (W, E, R)
         if (IsKeyPressed(KEY_W)) aktifMod = TransformModu::KONUM;
         if (IsKeyPressed(KEY_E)) aktifMod = TransformModu::ROTASYON;
         if (IsKeyPressed(KEY_R)) aktifMod = TransformModu::OLCEK;
 
-        // Seçili Nesneyi Silme (Delete veya Backspace)
+        // Seçili Nesneyi Silme
         if ((IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) && seciliNesneIndeksi != -1) {
+            Entity& silinen = nesneler[seciliNesneIndeksi];
+            if (silinen.bagliIsikIndeksi >= 0 && silinen.bagliIsikIndeksi < static_cast<int>(isiklar.size())) {
+                isiklar[silinen.bagliIsikIndeksi].aktif = false;
+            }
             nesneler.erase(nesneler.begin() + seciliNesneIndeksi);
             seciliNesneIndeksi = -1;
             suruklenenEksen = EksenTipi::YOK;
         }
 
-        // Sol Tıka Basıldığı An
+        // Sol Tıka Basıldığı An (3D Seçim)
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            // SADECE Toolbar ve açık menü alanının DIŞINDA 3D uzay tıklaması yap
             if (farePos.y > 45.0f && aktifMenu == MenuDurumu::KAPALI) {
                 Ray ray = GetMouseRay(farePos, kamera);
                 sonFarePozisyonu = farePos;
@@ -234,12 +373,16 @@ void Engine::Update() {
                     if (suruklenenEksen == EksenTipi::X) secili.pozisyon.x += miktarX;
                     if (suruklenenEksen == EksenTipi::Y) secili.pozisyon.y += miktarY;
                     if (suruklenenEksen == EksenTipi::Z) secili.pozisyon.z += miktarZ;
+
+                    // Eğer taşınan nesne bir IŞIK ise ışığın GPU pozisyonunu senkronize et
+                    if (secili.bagliIsikIndeksi >= 0 && secili.bagliIsikIndeksi < static_cast<int>(isiklar.size())) {
+                        isiklar[secili.bagliIsikIndeksi].pozisyon = secili.pozisyon;
+                    }
                 }
                 else if (aktifMod == TransformModu::ROTASYON) {
                     float rotSens = 2.0f;
                     if (IsKeyDown(KEY_LEFT_SHIFT)) rotSens *= 0.25f;
 
-                    // Rotasyon yönleri farenin ekran izdüşümüne ve eksen dönüş yönüne göre doğal hale getirildi
                     if (suruklenenEksen == EksenTipi::X) secili.rotasyon.x += miktarX * rotSens * 40.0f;
                     if (suruklenenEksen == EksenTipi::Y) secili.rotasyon.y -= miktarY * rotSens * 40.0f;
                     if (suruklenenEksen == EksenTipi::Z) secili.rotasyon.z -= miktarZ * rotSens * 40.0f;
@@ -247,7 +390,6 @@ void Engine::Update() {
                 else if (aktifMod == TransformModu::OLCEK) {
                     if (suruklenenEksen == EksenTipi::X) secili.olcek.x = fmaxf(0.1f, secili.olcek.x + miktarX);
                     
-                    // Plane (Düzlem) için Y ekseninde kalınlaşma engellendi
                     if (suruklenenEksen == EksenTipi::Y) {
                         if (secili.tip != EntityTipi::DUZLEM) {
                             secili.olcek.y = fmaxf(0.1f, secili.olcek.y + miktarY);
@@ -287,12 +429,19 @@ void Engine::Update() {
             calisiyorMu = false;
         }
     }
+
+    // 5. Shader Güncellemeleri (Kamera pozisyonu ve tüm aktif ışıklar)
+    float camPos[3] = { kamera.position.x, kamera.position.y, kamera.position.z };
+    SetShaderValue(isikShader, isikShader.locs[SHADER_LOC_VECTOR_VIEW], camPos, SHADER_UNIFORM_VEC3);
+
+    for (int i = 0; i < static_cast<int>(isiklar.size()); i++) {
+        GuncelleIsikGPU(isikShader, isiklar[i]);
+    }
 }
 
 void Engine::CizTransformGizmo(const Entity& nesne) {
     Vector3 pos = nesne.pozisyon;
 
-    // Nesnenin en geniş boyutuna göre gizmo mesafesini ve kalınlığını dinamik ayarla
     float maxBoyut = fmaxf(nesne.olcek.x, fmaxf(nesne.olcek.y, nesne.olcek.z));
     float gizmoUzunluk = fmaxf(2.0f, maxBoyut * 0.75f + 1.2f);
     float kafaBoyut = fmaxf(0.25f, gizmoUzunluk * 0.08f);
@@ -302,22 +451,17 @@ void Engine::CizTransformGizmo(const Entity& nesne) {
     Color zRenk = (suruklenenEksen == EksenTipi::Z) ? YELLOW : BLUE;
     Color mRenk = (suruklenenEksen == EksenTipi::MERKEZ) ? YELLOW : WHITE;
 
-    // Gizmo'nun nesnelerin arkasında kalmasını önlemek için Depth Test'i devre dışı bırak
     rlDisableDepthTest();
 
-    // Merkez Tutamacı
     DrawSphere(pos, kafaBoyut * 1.1f, mRenk);
 
     if (aktifMod == TransformModu::KONUM) {
-        // X Ekseni (Kırmızı)
         DrawLine3D(pos, (Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, xRenk);
         DrawSphere((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, kafaBoyut, xRenk);
 
-        // Y Ekseni (Yeşil)
         DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, yRenk);
         DrawSphere((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, kafaBoyut, yRenk);
 
-        // Z Ekseni (Mavi)
         DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, zRenk);
         DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, kafaBoyut, zRenk);
     } 
@@ -331,22 +475,18 @@ void Engine::CizTransformGizmo(const Entity& nesne) {
         DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, kafaBoyut, zRenk);
     } 
     else if (aktifMod == TransformModu::OLCEK) {
-        // X Ekseni
         DrawLine3D(pos, (Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, xRenk);
         DrawCube((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, kafaBoyut * 1.5f, kafaBoyut * 1.5f, kafaBoyut * 1.5f, xRenk);
 
-        // Y Ekseni (Eğer nesne Plane ise Y ekseni ölçekleme çubuğu hiç çizilmez)
         if (nesne.tip != EntityTipi::DUZLEM) {
             DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, yRenk);
             DrawCube((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, kafaBoyut * 1.5f, kafaBoyut * 1.5f, kafaBoyut * 1.5f, yRenk);
         }
 
-        // Z Ekseni
         DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, zRenk);
         DrawCube((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, kafaBoyut * 1.5f, kafaBoyut * 1.5f, kafaBoyut * 1.5f, zRenk);
     }
 
-    // Depth Test'i tekrar aktif et
     rlEnableDepthTest();
 }
 
@@ -396,10 +536,8 @@ void Engine::CizToolbar() {
     DrawRectangle(0, 0, ekranGenisligi, 38, (Color){ 22, 24, 30, 240 });
     DrawLine(0, 38, ekranGenisligi, 38, (Color){ 50, 55, 68, 255 });
 
-    // Sol Başlık
     DrawText("VIENTO ENGINE", 18, 11, 16, (Color){ 0, 230, 255, 255 });
 
-    // "+ Add" Menü Butonu
     Rectangle addBtn = { 160.0f, 5.0f, 75.0f, 28.0f };
     bool addHover = CheckCollisionPointRec(fare, addBtn);
     
@@ -408,12 +546,10 @@ void Engine::CizToolbar() {
     }
     DrawText("+ Add", 178, 12, 14, (Color){ 240, 245, 255, 255 });
 
-    // "+ Add" Butonuna Sol Tık
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         if (addHover) {
             aktifMenu = (aktifMenu == MenuDurumu::KAPALI) ? MenuDurumu::ADD_ANA : MenuDurumu::KAPALI;
         } else if (fare.y > 38.0f) {
-            // Menü açıkken menü dışına tıklandıysa menüyü kapat
             Rectangle anaMenuKutusu = { 160.0f, 38.0f, 130.0f, 70.0f };
             Rectangle subMenuKutusu = { 290.0f, 38.0f, 160.0f, 180.0f };
             if (!CheckCollisionPointRec(fare, anaMenuKutusu) && !CheckCollisionPointRec(fare, subMenuKutusu)) {
@@ -424,7 +560,6 @@ void Engine::CizToolbar() {
 
     // 2. Açılır Menü Mantığı
     if (aktifMenu != MenuDurumu::KAPALI) {
-        // Ana Menü Kutusu (Shapes ve Lights)
         Rectangle anaMenuKutusu = { 160.0f, 38.0f, 130.0f, 70.0f };
         DrawRectangleRec(anaMenuKutusu, (Color){ 25, 28, 36, 250 });
         DrawRectangleLinesEx(anaMenuKutusu, 1.0f, (Color){ 60, 65, 80, 255 });
@@ -448,7 +583,7 @@ void Engine::CizToolbar() {
         DrawText("Shapes        >", 172, 49, 13, (Color){ 230, 235, 245, 255 });
         DrawText("Lights          >", 172, 81, 13, (Color){ 230, 235, 245, 255 });
 
-        // 3. Alt Menü: Shapes
+        // 3. Alt Menü: Shapes (İşlevsel)
         if (aktifMenu == MenuDurumu::ADD_SHAPES) {
             Rectangle shapesMenuKutusu = { 290.0f, 38.0f, 140.0f, 175.0f };
             DrawRectangleRec(shapesMenuKutusu, (Color){ 28, 32, 42, 250 });
@@ -475,22 +610,32 @@ void Engine::CizToolbar() {
             }
         }
 
-        // 4. Alt Menü: Lights
+        // 4. Alt Menü: Lights (İşlevsel Işık Ekleme)
         else if (aktifMenu == MenuDurumu::ADD_LIGHTS) {
-            Rectangle lightsMenuKutusu = { 290.0f, 70.0f, 160.0f, 105.0f };
+            Rectangle lightsMenuKutusu = { 290.0f, 70.0f, 170.0f, 105.0f };
             DrawRectangleRec(lightsMenuKutusu, (Color){ 28, 32, 42, 250 });
             DrawRectangleLinesEx(lightsMenuKutusu, 1.0f, (Color){ 60, 65, 80, 255 });
 
             const char* lightIsimleri[] = { "Point Light", "Spot Light", "Environment Light" };
+            IsikTipi lightTipleri[] = { IsikTipi::NOKTASAL, IsikTipi::SPOT, IsikTipi::ORTAM_GUNES };
+            Color lightRenkleri[] = { (Color){ 255, 220, 120, 255 }, (Color){ 120, 220, 255, 255 }, (Color){ 255, 245, 230, 255 } };
 
             for (int i = 0; i < 3; i++) {
-                Rectangle itemRect = { 290.0f, 72.0f + (i * 33.0f), 160.0f, 32.0f };
+                Rectangle itemRect = { 290.0f, 72.0f + (i * 33.0f), 170.0f, 32.0f };
                 bool itemHover = CheckCollisionPointRec(fare, itemRect);
 
                 if (itemHover) {
-                    DrawRectangleRec(itemRect, (Color){ 50, 55, 70, 255 });
+                    DrawRectangleRec(itemRect, (Color){ 0, 120, 215, 255 });
+
+                    // Işık Ekleme Tıklaması
+                    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                        Vector3 olusmaPozisyonu = (Vector3){ 0.0f, 4.0f, 0.0f };
+                        IsikEkle(lightTipleri[i], olusmaPozisyonu, lightRenkleri[i], 1.2f);
+                        seciliNesneIndeksi = static_cast<int>(nesneler.size()) - 1; // Yeni ışık objesini anında seç
+                        aktifMenu = MenuDurumu::KAPALI;
+                    }
                 }
-                DrawText(lightIsimleri[i], 305, 81 + (i * 33), 12, (Color){ 160, 170, 190, 255 });
+                DrawText(lightIsimleri[i], 305, 81 + (i * 33), 13, WHITE);
             }
         }
     }
@@ -498,19 +643,31 @@ void Engine::CizToolbar() {
 
 void Engine::Render() {
     BeginDrawing();
-        ClearBackground((Color){ 30, 31, 36, 255 });
+        ClearBackground((Color){ 26, 27, 32, 255 });
 
         // --- 3D VIEWPORT ---
         BeginMode3D(kamera);
 
             DrawGrid(24, 1.0f);
 
-            // Sahnedeki Varlıkları Çiz
-            for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
-                bool secili = (i == seciliNesneIndeksi);
-                nesneler[i].Ciz(secili);
+            // 1. IŞIK SHADER'I İLE AYDINLATILAN NESNELER
+            BeginShaderMode(isikShader);
+                for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
+                    if (nesneler[i].tip != EntityTipi::ISIK_KAYNAGI) {
+                        bool secili = (i == seciliNesneIndeksi);
+                        nesneler[i].Ciz(secili);
+                    }
+                }
+            EndShaderMode();
 
-                if (secili) {
+            // 2. SHADER'SIZ (KENDİNDEN PARLAK) ÇİZİLEN IŞIK KAYNAKLARI VE GIZMOLAR
+            for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
+                if (nesneler[i].tip == EntityTipi::ISIK_KAYNAGI) {
+                    bool secili = (i == seciliNesneIndeksi);
+                    nesneler[i].Ciz(secili);
+                }
+
+                if (i == seciliNesneIndeksi) {
                     CizTransformGizmo(nesneler[i]);
                 }
             }
@@ -520,11 +677,11 @@ void Engine::Render() {
 
         // --- 2D ARAYÜZ (HUD) & PANELLER ---
         
-        // Sol Üst Bilgi Paneli (Toolbar'ın hemen altında)
+        // Sol Üst Bilgi Paneli
         DrawRectangleRounded((Rectangle){ 20.0f, 50.0f, 520.0f, 105.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
         DrawRectangleRoundedLines((Rectangle){ 20.0f, 50.0f, 520.0f, 105.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
 
-        DrawText("Fare Sol Tik: Obje Sec / Eksen Tut Surukle | Del: Sil", 35, 62, 13, (Color){ 240, 245, 255, 255 });
+        DrawText("Fare Sol Tik: Obje/Isik Sec & Eksenle Tasi | Del: Sil", 35, 62, 13, (Color){ 240, 245, 255, 255 });
         
         const char* modAdi = (aktifMod == TransformModu::KONUM) ? "[W] Konum (Translate)" :
                              (aktifMod == TransformModu::ROTASYON) ? "[E] Rotasyon (Rotate)" : "[R] Olcek (Scale)";
@@ -534,19 +691,22 @@ void Engine::Render() {
         DrawText(TextFormat("Aktif Mod: %s", modAdi), 35, 84, 14, modRengi);
         DrawText("Kamera: Sag Tik + WASD/QE | Tekerlek: Hiz | ESC: Cikis", 35, 106, 12, (Color){ 255, 205, 80, 255 });
 
-        // Sol Alt: Seçili Obje Transform Paneli
-        DrawRectangleRounded((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 490.0f, 65.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
-        DrawRectangleRoundedLines((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 490.0f, 65.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
+        // Sol Alt: Seçili Obje / Işık Transform Paneli
+        DrawRectangleRounded((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 510.0f, 65.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
+        DrawRectangleRoundedLines((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 510.0f, 65.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
 
         if (seciliNesneIndeksi != -1) {
             const Entity& secili = nesneler[seciliNesneIndeksi];
-            DrawText(TextFormat("SECILI OBJE #%i (Toplam: %i)", seciliNesneIndeksi, (int)nesneler.size()), 35, ekranYuksekligi - 75, 14, ORANGE);
+            const char* tipMetni = (secili.tip == EntityTipi::ISIK_KAYNAGI) ? "ISIK KAYNAGI" : "3D NESNE";
+            Color baslikRenk = (secili.tip == EntityTipi::ISIK_KAYNAGI) ? YELLOW : ORANGE;
+
+            DrawText(TextFormat("SECILI %s #%i (Sahne: %i Obje, %i Isik)", tipMetni, seciliNesneIndeksi, (int)nesneler.size(), (int)isiklar.size()), 35, ekranYuksekligi - 75, 14, baslikRenk);
             DrawText(TextFormat("Konum: (%.1f, %.1f, %.1f) | Rot: (%.0f, %.0f, %.0f) | Boyut: (%.1f, %.1f, %.1f)", 
                      secili.pozisyon.x, secili.pozisyon.y, secili.pozisyon.z,
                      secili.rotasyon.x, secili.rotasyon.y, secili.rotasyon.z,
                      secili.olcek.x, secili.olcek.y, secili.olcek.z), 35, ekranYuksekligi - 52, 12, (Color){ 220, 230, 245, 255 });
         } else {
-            DrawText(TextFormat("Secili Obje: Yok (Toplam Sahne: %i Obje)", (int)nesneler.size()), 35, ekranYuksekligi - 60, 14, (Color){ 130, 140, 160, 255 });
+            DrawText(TextFormat("Secili Obje: Yok (Toplam Sahne: %i Obje | %i Aktif Isik)", (int)nesneler.size(), (int)isiklar.size()), 35, ekranYuksekligi - 60, 14, (Color){ 130, 140, 160, 255 });
         }
 
         // Sağ Alt: 3D Yön Pusulası
@@ -561,7 +721,7 @@ void Engine::Render() {
         DrawText(TextFormat("Frame Time: %.2f ms", GetFrameTime() * 1000.0f), ekranGenisligi - fpsPanelWidth + 15, 80, 13, (Color){ 255, 205, 80, 255 });
         DrawText(TextFormat("Cozunurluk: %ix%i", ekranGenisligi, ekranYuksekligi), ekranGenisligi - fpsPanelWidth + 15, 98, 12, (Color){ 170, 180, 200, 255 });
 
-        // En Üst: Toolbar ve Açılır Menüler (Tüm arayüzün en üst katmanında çizilir)
+        // En Üst: Toolbar
         CizToolbar();
 
     EndDrawing();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Entity.h"
+#include "Light.h"
 #include "raylib.h"
 #include "rlgl.h"
 #include <vector>
@@ -40,8 +41,10 @@ public:
     void Shutdown();
 
     void NesneEkle(const Entity& yeniNesne);
+    void IsikEkle(IsikTipi tip, Vector3 pos, Color renk = WHITE, float parlaklik = 1.0f);
 
 private:
+    void InitShader(); // GLSL Aydınlatma shader'ı kurulumu
     void Update();
     void Render();
     void CizToolbar(); // Üst araç çubuğu ve açılır menüler
@@ -66,6 +69,12 @@ private:
 
     // Toolbar / Menü Yönetimi
     MenuDurumu aktifMenu;
+
+    // Aydınlatma Shader ve Işık Listesi
+    Shader isikShader;
+    int kameraPosLoc;
+    int ortamIsigiLoc;
+    std::vector<Isik> isiklar;
 
     std::vector<Entity> nesneler;
 };
