@@ -4,19 +4,29 @@
 #include "raymath.h"
 #include "rlgl.h"
 
+// Nesne Şekil Türleri
+enum class EntityTipi {
+    KUP,      // Cube
+    KURE,     // Sphere
+    SILINDIR, // Cylinder
+    UCGEN     // Triangle / Pyramid
+};
+
 // 3D uzaydaki bir nesneyi temsil eden temel yapı
 struct Entity {
+    EntityTipi tip;   // Nesnenin geometrisi
     Vector3 pozisyon; // Konum (X, Y, Z)
-    Vector3 rotasyon; // Dönüş açıları (Pitch, Yaw, Roll - Derece cinsinden)
-    Vector3 olcek;    // Ölçek/Boyut çarpanı (Scale X, Y, Z)
+    Vector3 rotasyon; // Dönüş açıları (Pitch, Yaw, Roll)
+    Vector3 olcek;    // Ölçek çarpanı (Scale X, Y, Z)
     
     Color renk;       // Gövde rengi
     Color cizgiRengi; // Kenar çizgisi rengi
     bool cizgiler;    // Kenar çizgileri çizilsin mi?
 
     // Varsayılan kurucu
-    Entity()
-        : pozisyon((Vector3){ 0.0f, 1.0f, 0.0f }),
+    Entity(EntityTipi nesneTipi = EntityTipi::KUP)
+        : tip(nesneTipi),
+          pozisyon((Vector3){ 0.0f, 1.0f, 0.0f }),
           rotasyon((Vector3){ 0.0f, 0.0f, 0.0f }),
           olcek((Vector3){ 2.0f, 2.0f, 2.0f }),
           renk((Color){ 140, 145, 155, 255 }),
@@ -38,27 +48,34 @@ struct Entity {
         return { min, max };
     }
 
-    // Nesneyi 3D uzayda konum, rotasyon ve ölçek dönüşümleriyle çizen fonksiyon
+    // Nesneyi türüne göre 3D uzayda çizen fonksiyon
     void Ciz(bool seciliMi = false) const {
         rlPushMatrix();
-            // 1. Konuma taşı (Translation)
             rlTranslatef(pozisyon.x, pozisyon.y, pozisyon.z);
-
-            // 2. Açılara göre döndür (Rotation: Y -> X -> Z)
             rlRotatef(rotasyon.y, 0.0f, 1.0f, 0.0f);
             rlRotatef(rotasyon.x, 1.0f, 0.0f, 0.0f);
             rlRotatef(rotasyon.z, 0.0f, 0.0f, 1.0f);
-
-            // 3. Ölçeklendir (Scale)
             rlScalef(olcek.x, olcek.y, olcek.z);
 
-            // Birim küp (1x1x1) çizilir, ölçek matrisi bunu gerçek boyutuna dönüştürür
-            DrawCube((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, renk);
+            Color govde = renk;
+            Color kenar = seciliMi ? ORANGE : cizgiRengi;
 
-            if (seciliMi) {
-                DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, ORANGE);
-            } else if (cizgiler) {
-                DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, cizgiRengi);
+            if (tip == EntityTipi::KUP) {
+                DrawCube((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, govde);
+                if (seciliMi || cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, kenar);
+            }
+            else if (tip == EntityTipi::KURE) {
+                DrawSphere((Vector3){ 0.0f, 0.0f, 0.0f }, 0.5f, govde);
+                if (seciliMi || cizgiler) DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.5f, 16, 16, kenar);
+            }
+            else if (tip == EntityTipi::SILINDIR) {
+                DrawCylinder((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, govde);
+                if (seciliMi || cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, kenar);
+            }
+            else if (tip == EntityTipi::UCGEN) {
+                // Piramit / Üçgen Geometri
+                DrawCylinder((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, govde);
+                if (seciliMi || cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, kenar);
             }
         rlPopMatrix();
     }
