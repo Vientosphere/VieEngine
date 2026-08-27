@@ -1,24 +1,17 @@
 #include "Engine.h"
 
 int main() {
-    // 1. Viento Engine başlat
+    // 1. Viento Engine motor örneğini oluştur
     Engine motor;
+
+    // 2. Pencereyi ve grafik boru hattını başlat (1280x720 çözünürlük)
     motor.Init(1280, 720, "Viento Engine - 3D Viewport");
 
-    // 2. Klasik Başlangıç Küpü (2x2x2 Boyutunda, Tam Merkezde)
-    Entity baslangicKupu;
-    baslangicKupu.pozisyon = (Vector3){ 0.0f, 1.0f, 0.0f };    // Tabanı ızgaraya oturacak şekilde Y=1
-    baslangicKupu.rotasyon = (Vector3){ 0.0f, 0.0f, 0.0f };
-    baslangicKupu.olcek = (Vector3){ 2.0f, 2.0f, 2.0f };       // Standart 2x2x2
-    baslangicKupu.renk = (Color){ 140, 145, 155, 255 };        // Nötr gri
-    baslangicKupu.cizgiRengi = (Color){ 230, 235, 245, 255 };  // Açık gri kenarlıklar
-    baslangicKupu.cizgiler = true;
-
-    // Sahneye ekle
-    motor.NesneEkle(baslangicKupu);
-
-    // 3. Motoru çalıştır
+    // 3. Ana motor döngüsünü çalıştır (Update & Render)
     motor.Run();
+
+    // 4. Motor kapatıldığında kaynakları temizle
+    motor.Shutdown();
 
     return 0;
 }

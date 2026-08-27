@@ -2,7 +2,10 @@
 #include "raymath.h"
 #include "rlgl.h"
 
-// 1. Ana Aydınlatma & Gölge Vertex Shader
+// ============================================================================
+// 1. GLSL 330 VERTEX SHADER
+// Model, Normal ve MVP matris dönüşümlerini GPU üzerinde hesaplar
+// ============================================================================
 static const char* isikVSKaynak = R"(
 #version 330
 in vec3 vertexPosition;
@@ -28,7 +31,10 @@ void main() {
 }
 )";
 
-// 2. Ana Aydınlatma & Gölge Fragment Shader (Physical Attenuation, Multi-Mode Perspective/Orthographic Shadows, PCF)
+// ============================================================================
+// 2. GLSL 330 FRAGMENT SHADER
+// Fiziksel Işık Zayıflaması, Spot Koni Geçişi, 16-Sample PCF Yumuşak Gölgeler
+// ============================================================================
 static const char* isikFSKaynak = R"(
 #version 330
 #define MAKSIMUM_ISIK_SAYISI 8
@@ -62,30 +68,30 @@ uniform Isik isiklar[MAKSIMUM_ISIK_SAYISI];
 
 out vec4 finalColor;
 
-// 16-Sample PCF Yumuşak Gölge Hesaplayıcı (Perspective & Orthographic Uyumlu)
+// 16-Sample PCF (Percentage Closer Filtering) Yumuşak Gölge Hesaplama Fonksiyonu
 float HesaplaGolge(vec3 fragPos, vec3 normal, vec3 isikYonu) {
     vec4 fragPosLightSpace = lightVP * vec4(fragPos, 1.0);
 
-    // Perspektif projeksiyonda ışığın arkasında kalan noktaları filtrele
+    // Perspektif projeksiyonda ışık kamerasının arkasında kalan noktaları filtrele
     if (fragPosLightSpace.w <= 0.0) {
         return 1.0;
     }
 
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = (projCoords * 0.5) + 0.5;
+    projCoords = (projCoords * 0.5) + 0.5; // [-1, 1] NDC -> [0, 1] UV Koordinat Dönüşümü
 
     if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0) {
         return 1.0;
     }
 
-    // Yüzey normali ve ışık açısına göre adaptif bias
+    // Yüzey eğimine bağlı dinamik gölge sapması (Shadow Acne önleyici adaptif bias)
     float cosTheta = clamp(dot(normal, isikYonu), 0.0, 1.0);
     float bias = max(0.0025 * (1.0 - cosTheta), 0.0005);
 
     float golgeFaktoru = 0.0;
     vec2 texelSize = vec2(1.0 / float(shadowMapResolution));
 
-    // 4x4 PCF Yumuşatma Filtresi
+    // 4x4 PCF Yumuşatma Filtresi (Penumbra)
     for (int x = -1; x <= 2; ++x) {
         for (int y = -1; y <= 2; ++y) {
             float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
@@ -113,7 +119,7 @@ void main() {
                 // Environment / Directional Light (Güneş Işığı)
                 isikYonu = normalize(isiklar[i].pozisyon - isiklar[i].hedef);
             } else {
-                // Point & Spot Light (Inverse Square Falloff)
+                // Point & Spot Light (Inverse Square Law Falloff ile Fiziksel Zayıflama)
                 vec3 fark = isiklar[i].pozisyon - fragPosition;
                 float mesafe = length(fark);
                 isikYonu = normalize(fark);
@@ -123,7 +129,7 @@ void main() {
                 sonum = (mesafeOrani * mesafeOrani) / (mesafe * mesafe + 1.0) * (yaricap * 0.75);
 
                 if (isiklar[i].tip == 1) {
-                    // Spot Light Cone Falloff
+                    // Spot Light İç ve Dış Koni Açısı Yumuşatması
                     vec3 spotYonu = normalize(isiklar[i].hedef - isiklar[i].pozisyon);
                     float theta = dot(-isikYonu, spotYonu);
                     float epsilon = isiklar[i].icKoniAcisi - isiklar[i].disKoniAcisi;
@@ -132,16 +138,16 @@ void main() {
                 }
             }
 
-            // Aktif gölge kaynağı ise dinamik gölgeyi hesapla
+            // Aktif gölge kaynağı ise dinamik gölge çarpanını uygula
             if (i == golgeIsikIndeksi) {
                 golge = HesaplaGolge(fragPosition, normal, isikYonu);
             }
 
-            // Diffuse (Lambert)
+            // Diffuse (Lambertian Reflection)
             float NdotL = max(dot(normal, isikYonu), 0.0);
             vec3 diffuse = isiklar[i].renk.rgb * NdotL * isiklar[i].parlaklik;
 
-            // Specular (Blinn-Phong)
+            // Specular (Blinn-Phong Parlama Modeli)
             vec3 yariVektor = normalize(isikYonu + gorunumYonu);
             float NdotH = max(dot(normal, yariVektor), 0.0);
             float spec = pow(NdotH, 32.0);
@@ -155,6 +161,37 @@ void main() {
 }
 )";
 
+// ============================================================================
+// MOTOR KURUCU & YIKICI
+// ============================================================================
+Engine::Engine()
+    : ekranGenisligi(1280), ekranYuksekligi(720), calisiyorMu(false),
+      kameraHizi(10.0f), kameraYaw(45.0f), kameraPitch(-30.0f),
+      seciliNesneIndeksi(-1), aktifMod(TransformModu::KONUM),
+      suruklenenEksen(EksenTipi::YOK), sonFarePozisyonu((Vector2){ 0.0f, 0.0f }),
+      aktifMenu(MenuDurumu::KAPALI), golgeIsikIndeksi(0) {
+
+    kamera = { 0 };
+    kamera.position = (Vector3){ 9.0f, 8.0f, 9.0f };
+    kamera.target = (Vector3){ 0.0f, 1.0f, 0.0f };
+    kamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    kamera.fovy = 65.0f;
+    kamera.projection = CAMERA_PERSPECTIVE;
+
+    Vector3 bakisYonu = Vector3Normalize(Vector3Subtract(kamera.target, kamera.position));
+    kameraPitch = asinf(bakisYonu.y) * RAD2DEG;
+    kameraYaw   = atan2f(bakisYonu.x, bakisYonu.z) * RAD2DEG;
+
+    isikKamerasi = { 0 };
+}
+
+Engine::~Engine() {
+    Shutdown();
+}
+
+// ============================================================================
+// FRAMEBUFFER (FBO) VE GÖLGE DOKUSU OLUŞTURUCU
+// ============================================================================
 RenderTexture2D Engine::LoadShadowmap(int width, int height) {
     RenderTexture2D target = { 0 };
     target.id = rlLoadFramebuffer();
@@ -188,31 +225,9 @@ void Engine::UnloadShadowmap(RenderTexture2D target) {
     }
 }
 
-Engine::Engine()
-    : ekranGenisligi(1280), ekranYuksekligi(720), calisiyorMu(false),
-      kameraHizi(10.0f), kameraYaw(45.0f), kameraPitch(-30.0f),
-      seciliNesneIndeksi(-1), aktifMod(TransformModu::KONUM),
-      suruklenenEksen(EksenTipi::YOK), sonFarePozisyonu((Vector2){ 0.0f, 0.0f }),
-      aktifMenu(MenuDurumu::KAPALI), golgeIsikIndeksi(0) {
-
-    kamera = { 0 };
-    kamera.position = (Vector3){ 9.0f, 8.0f, 9.0f };
-    kamera.target = (Vector3){ 0.0f, 1.0f, 0.0f };
-    kamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    kamera.fovy = 65.0f;
-    kamera.projection = CAMERA_PERSPECTIVE;
-
-    Vector3 bakisYonu = Vector3Normalize(Vector3Subtract(kamera.target, kamera.position));
-    kameraPitch = asinf(bakisYonu.y) * RAD2DEG;
-    kameraYaw   = atan2f(bakisYonu.x, bakisYonu.z) * RAD2DEG;
-
-    isikKamerasi = { 0 };
-}
-
-Engine::~Engine() {
-    Shutdown();
-}
-
+// ============================================================================
+// GEOMETRİ MESH VE SHADER BAŞLATMA
+// ============================================================================
 void Engine::InitMeshes() {
     kupMesh = GenMeshCube(1.0f, 1.0f, 1.0f);
     kureMesh = GenMeshSphere(0.5f, 32, 32);
@@ -256,6 +271,9 @@ void Engine::InitShader() {
     SetShaderValue(isikShader, ortamIsigiLoc, ortamDegeri, SHADER_UNIFORM_VEC4);
 }
 
+// ============================================================================
+// MOTOR BAŞLATMA (INIT)
+// ============================================================================
 void Engine::Init(int genislik, int yukseklik, const char* baslik) {
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_MSAA_4X_HINT);
 
@@ -271,7 +289,7 @@ void Engine::Init(int genislik, int yukseklik, const char* baslik) {
     InitShadowmap();
     InitMeshes();
 
-    // 1. Zemin Düzlemi (Plane - 24x24 geniş zemin)
+    // 1. Zemin Düzlemi (Plane - 24x24 Geniş Zemin)
     Entity zemin(EntityTipi::DUZLEM);
     zemin.pozisyon = (Vector3){ 0.0f, 0.0f, 0.0f };
     zemin.olcek = (Vector3){ 24.0f, 0.06f, 24.0f };
@@ -308,6 +326,9 @@ void Engine::Init(int genislik, int yukseklik, const char* baslik) {
     calisiyorMu = true;
 }
 
+// ============================================================================
+// MOTORU KAPATMA VE BELLEK TEMİZLİĞİ
+// ============================================================================
 void Engine::Shutdown() {
     if (calisiyorMu) {
         UnloadMesh(kupMesh);
@@ -365,10 +386,12 @@ void Engine::IsikEkle(IsikTipi tip, Vector3 pos, Color renk, float parlaklik, fl
     NesneEkle(isikObjesi);
 }
 
+// ============================================================================
+// DİNAMİK GÖLGE KAMERASI YÖNETİMİ
+// ============================================================================
 void Engine::GuncelleIsikKamerasi() {
     if (isiklar.empty()) return;
 
-    // Seçili obje bir ışık kaynağı ise gölge kamerasını doğrudan o ışığa bağla
     int aktifGolge = 0;
     if (seciliNesneIndeksi != -1 && seciliNesneIndeksi < static_cast<int>(nesneler.size())) {
         const Entity& secili = nesneler[seciliNesneIndeksi];
@@ -381,7 +404,6 @@ void Engine::GuncelleIsikKamerasi() {
     const Isik& aktifIsik = isiklar[aktifGolge];
 
     if (aktifIsik.tip == IsikTipi::ORTAM_GUNES) {
-        // Güneş Işığı -> Ortografik Projeksiyon (Paralel Güneş Işınları)
         isikKamerasi.projection = CAMERA_ORTHOGRAPHIC;
         Vector3 sunDir = Vector3Normalize(Vector3Subtract(aktifIsik.pozisyon, aktifIsik.hedef));
         if (Vector3Length(sunDir) < 0.1f) sunDir = (Vector3){ 0.5f, 1.0f, 0.5f };
@@ -392,7 +414,6 @@ void Engine::GuncelleIsikKamerasi() {
         isikKamerasi.fovy = 45.0f;
     }
     else if (aktifIsik.tip == IsikTipi::SPOT) {
-        // Spot Işık -> Spot Konisi Boyunca Perspektif Gölge Projeksiyonu
         isikKamerasi.projection = CAMERA_PERSPECTIVE;
         isikKamerasi.position = aktifIsik.pozisyon;
         isikKamerasi.target = aktifIsik.hedef;
@@ -400,16 +421,17 @@ void Engine::GuncelleIsikKamerasi() {
         isikKamerasi.fovy = fmaxf(20.0f, aktifIsik.disKoniAcisi * 2.0f);
     }
     else {
-        // Noktasal Işık (Point Light) -> Işık Merkezinden Nesnelere Doğru Radyal Perspektif Gölge
         isikKamerasi.projection = CAMERA_PERSPECTIVE;
         isikKamerasi.position = aktifIsik.pozisyon;
-        // Zemine ve nesnelere doğru geniş açılı perspektif bakış
         isikKamerasi.target = (Vector3){ aktifIsik.pozisyon.x, aktifIsik.pozisyon.y - 10.0f, aktifIsik.pozisyon.z };
         isikKamerasi.up = (Vector3){ 0.0f, 0.0f, 1.0f };
         isikKamerasi.fovy = 120.0f;
     }
 }
 
+// ============================================================================
+// 3D TRANSFORM GIZMO SEÇİM ALGILAYICI (RAYCASTING)
+// ============================================================================
 EksenTipi Engine::AlgilaGizmoEkseni(const Entity& nesne, Ray ray) {
     Vector3 pos = nesne.pozisyon;
     
@@ -446,10 +468,14 @@ EksenTipi Engine::AlgilaGizmoEkseni(const Entity& nesne, Ray ray) {
     return EksenTipi::YOK;
 }
 
+// ============================================================================
+// GÜNCELLEME DÖNGÜSÜ (UPDATE)
+// ============================================================================
 void Engine::Update() {
     float dt = GetFrameTime();
     Vector2 farePos = GetMousePosition();
 
+    // Kamera Hızı (Fare Tekerleği)
     float tekerlek = GetMouseWheelMove();
     if (tekerlek != 0.0f) {
         kameraHizi += tekerlek * 2.5f;
@@ -457,9 +483,11 @@ void Engine::Update() {
         if (kameraHizi > 50.0f) kameraHizi = 50.0f;
     }
 
+    // Kamera FOV Ayarı ([ ve ] tuşları)
     if (IsKeyDown(KEY_LEFT_BRACKET) && kamera.fovy > 30.0f)  kamera.fovy -= 30.0f * dt;
     if (IsKeyDown(KEY_RIGHT_BRACKET) && kamera.fovy < 110.0f) kamera.fovy += 30.0f * dt;
 
+    // Serbest Kamera Kontrolü (Sağ Tık + WASD / QE)
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         DisableCursor();
         GetMouseDelta();
@@ -502,11 +530,13 @@ void Engine::Update() {
         EnableCursor();
     }
 
+    // Editör Tuş Kısayolları ve Nesne Manipülasyonu
     if (!IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         if (IsKeyPressed(KEY_W)) aktifMod = TransformModu::KONUM;
         if (IsKeyPressed(KEY_E)) aktifMod = TransformModu::ROTASYON;
         if (IsKeyPressed(KEY_R)) aktifMod = TransformModu::OLCEK;
 
+        // Nesne Silme (Del / Backspace)
         if ((IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) && seciliNesneIndeksi != -1) {
             Entity& silinen = nesneler[seciliNesneIndeksi];
             if (silinen.bagliIsikIndeksi >= 0 && silinen.bagliIsikIndeksi < static_cast<int>(isiklar.size())) {
@@ -517,6 +547,7 @@ void Engine::Update() {
             suruklenenEksen = EksenTipi::YOK;
         }
 
+        // Sol Tık Seçim ve Gizmo Tutma
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             if (farePos.y > 45.0f && aktifMenu == MenuDurumu::KAPALI) {
                 Ray ray = GetMouseRay(farePos, kamera);
@@ -544,6 +575,7 @@ void Engine::Update() {
             }
         }
 
+        // Fare ile Sürükleme ve 2D Projeksiyon ile Eksen Hareketi
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && suruklenenEksen != EksenTipi::YOK) {
             Vector2 fareDelta = { farePos.x - sonFarePozisyonu.x, farePos.y - sonFarePozisyonu.y };
             sonFarePozisyonu = farePos;
@@ -630,10 +662,10 @@ void Engine::Update() {
         }
     }
 
-    // Gölge Kamerasını seçili veya birincil ışığa göre gerçek zamanlı kalibre et
+    // Işık ve Gölge Kamerasını Güncelle
     GuncelleIsikKamerasi();
 
-    // Shader ve Işık GPU Güncellemeleri
+    // Shader GPU Uniform Güncellemeleri
     float camPos[3] = { kamera.position.x, kamera.position.y, kamera.position.z };
     SetShaderValue(isikShader, isikShader.locs[SHADER_LOC_VECTOR_VIEW], camPos, SHADER_UNIFORM_VEC3);
     SetShaderValue(isikShader, golgeIsikLoc, &golgeIsikIndeksi, SHADER_UNIFORM_INT);
@@ -643,6 +675,9 @@ void Engine::Update() {
     }
 }
 
+// ============================================================================
+// SAHNE ÇİZİM FONKSİYONU (SOLID, WIREFRAME, OUTLINE)
+// ============================================================================
 void Engine::SahneyiCiz(bool golgePassi) {
     for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
         const Entity& n = nesneler[i];
@@ -664,11 +699,11 @@ void Engine::SahneyiCiz(bool golgePassi) {
         if (golgePassi) {
             DrawMesh(mesh, golgeMaterial, transform);
         } else {
-            // 1. Katı Gövde Renderi (Işık & Gölge Shader'ı ile)
+            // 1. Katı Gövde Renderi
             isikMaterial.maps[MATERIAL_MAP_DIFFUSE].color = n.renk;
             DrawMesh(mesh, isikMaterial, transform);
 
-            // 2. Model Tel Çerçeveleri (Wireframe) - Mesh ile %100 Senkronize
+            // 2. Tel Kafes Çizgileri (Wireframe)
             if (n.cizgiler) {
                 rlEnableWireMode();
                 wireMaterial.maps[MATERIAL_MAP_DIFFUSE].color = n.cizgiRengi;
@@ -676,7 +711,7 @@ void Engine::SahneyiCiz(bool golgePassi) {
                 rlDisableWireMode();
             }
 
-            // 3. Seçili Nesne İçin Turuncu Dış Çizgi (Selection Outline)
+            // 3. Seçili Nesne Dış Çerçevesi (Synchronized Outline)
             bool secili = (i == seciliNesneIndeksi);
             if (secili) {
                 rlEnableWireMode();
@@ -700,6 +735,9 @@ void Engine::SahneyiCiz(bool golgePassi) {
     }
 }
 
+// ============================================================================
+// 3D TRANSFORM GIZMO ÇİZİCİ
+// ============================================================================
 void Engine::CizTransformGizmo(const Entity& nesne) {
     Vector3 pos = nesne.pozisyon;
 
@@ -751,6 +789,9 @@ void Engine::CizTransformGizmo(const Entity& nesne) {
     rlEnableDepthTest();
 }
 
+// ============================================================================
+// SAĞ ALT YÖN EKSENLERİ KÜPÜ (ORIENTATION GIZMO)
+// ============================================================================
 void Engine::CizSagAltGizmo() {
     Vector3 kameraYonu = Vector3Normalize(Vector3Subtract(kamera.target, kamera.position));
     
@@ -790,6 +831,9 @@ void Engine::CizSagAltGizmo() {
     DrawText("Z", gizmoX + 12, gizmoY + gizmoBoyut - 20, 12, BLUE);
 }
 
+// ============================================================================
+// ÜST ARAÇ ÇUBUĞU VE + ADD MENÜSÜ
+// ============================================================================
 void Engine::CizToolbar() {
     Vector2 fare = GetMousePosition();
 
@@ -896,6 +940,9 @@ void Engine::CizToolbar() {
     }
 }
 
+// ============================================================================
+// ANA ÇİZİM DÖNGÜSÜ (2-PASS SHADOW & RENDER)
+// ============================================================================
 void Engine::Render() {
     // ====================================================
     // 1. PASS: GÖLGE DERİNLİK HARİTASI (SHADOWMAP PASS)
