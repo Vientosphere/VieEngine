@@ -5,11 +5,20 @@
 #include "rlgl.h"
 #include <vector>
 
-// Dönüşüm / Manipülasyon Modları (Klasik W, E, R tuşları)
+// Dönüşüm / Manipülasyon Modları
 enum class TransformModu {
-    KONUM,   // Translate / Position (W Tuşu)
-    ROTASYON,// Rotate (E Tuşu)
-    OLCEK    // Scale (R Tuşu)
+    KONUM,    // Translate / Position (W Tuşu)
+    ROTASYON, // Rotate (E Tuşu)
+    OLCEK     // Scale (R Tuşu)
+};
+
+// Sürüklenen Eksen Tipi
+enum class EksenTipi {
+    YOK,
+    X,
+    Y,
+    Z,
+    MERKEZ // Tüm eksenler (Ölçek için)
 };
 
 // Viento Engine Çekirdek Sınıfı
@@ -27,10 +36,13 @@ public:
     void NesneEkle(const Entity& yeniNesne);
 
 private:
-    void Update(); // Kamera, seçim ve manipülasyon kontrolleri
+    void Update(); // Kamera, seçim ve fare sürükleme güncellemeleri
     void Render(); // 3D uzay, gizmo ve arayüz çizimi
     void CizSagAltGizmo(); // Sağ alttaki 3D yön pusulası
-    void CizTransformGizmo(const Entity& nesne); // Seçili nesnenin üzerindeki dinamik mod gismosu
+    void CizTransformGizmo(const Entity& nesne); // Seçili nesnenin üzerindeki etkileşimli eksenler
+
+    // Eksen tutma ve sürükleme kontrolleri
+    EksenTipi AlgilaGizmoEkseni(const Entity& nesne, Ray ray);
 
     // Pencere durumu
     int ekranGenisligi;
@@ -43,9 +55,11 @@ private:
     float kameraYaw;
     float kameraPitch;
 
-    // Seçim ve Transform modu
+    // Seçim, Mod ve Sürükleme durumu
     int seciliNesneIndeksi;
     TransformModu aktifMod;
+    EksenTipi suruklenenEksen;
+    Vector2 sonFarePozisyonu;
 
     // Sahnedeki nesneler
     std::vector<Entity> nesneler;

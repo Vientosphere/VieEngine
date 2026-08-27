@@ -5,7 +5,8 @@
 Engine::Engine()
     : ekranGenisligi(1280), ekranYuksekligi(720), calisiyorMu(false),
       kameraHizi(10.0f), kameraYaw(45.0f), kameraPitch(-30.0f),
-      seciliNesneIndeksi(-1), aktifMod(TransformModu::KONUM) {
+      seciliNesneIndeksi(-1), aktifMod(TransformModu::KONUM),
+      suruklenenEksen(EksenTipi::YOK), sonFarePozisyonu((Vector2){ 0.0f, 0.0f }) {
 
     // Varsayılan FOV 70 ile perspektif kamera
     kamera = { 0 };
@@ -15,7 +16,7 @@ Engine::Engine()
     kamera.fovy = 70.0f;
     kamera.projection = CAMERA_PERSPECTIVE;
 
-    // Başlangıç açısı hesaplama
+    // Başlangıç bakış açısı
     Vector3 bakisYonu = Vector3Normalize(Vector3Subtract(kamera.target, kamera.position));
     kameraPitch = asinf(bakisYonu.y) * RAD2DEG;
     kameraYaw   = atan2f(bakisYonu.x, bakisYonu.z) * RAD2DEG;
@@ -56,8 +57,46 @@ void Engine::Run() {
     }
 }
 
+// Ray ile Gizmo eksenine tıklanıp tıklanmadığını algıla
+EksenTipi Engine::AlgilaGizmoEkseni(const Entity& nesne, Ray ray) {
+    Vector3 pos = nesne.pozisyon;
+    float mesafe = 2.5f;
+    float yaricap = 0.35f;
+
+    // X Ekseni Ucu (Kırmızı Küre)
+    BoundingBox xBox = {
+        (Vector3){ pos.x + mesafe - yaricap, pos.y - yaricap, pos.z - yaricap },
+        (Vector3){ pos.x + mesafe + yaricap, pos.y + yaricap, pos.z + yaricap }
+    };
+    if (GetRayCollisionBox(ray, xBox).hit) return EksenTipi::X;
+
+    // Y Ekseni Ucu (Yeşil Küre)
+    BoundingBox yBox = {
+        (Vector3){ pos.x - yaricap, pos.y + mesafe - yaricap, pos.z - yaricap },
+        (Vector3){ pos.x + yaricap, pos.y + mesafe + yaricap, pos.z + yaricap }
+    };
+    if (GetRayCollisionBox(ray, yBox).hit) return EksenTipi::Y;
+
+    // Z Ekseni Ucu (Mavi Küre)
+    BoundingBox zBox = {
+        (Vector3){ pos.x - yaricap, pos.y - yaricap, pos.z + mesafe - yaricap },
+        (Vector3){ pos.x + yaricap, pos.y + yaricap, pos.z + mesafe + yaricap }
+    };
+    if (GetRayCollisionBox(ray, zBox).hit) return EksenTipi::Z;
+
+    // Merkez Nokta (Tüm eksenler)
+    BoundingBox merkezBox = {
+        (Vector3){ pos.x - yaricap, pos.y - yaricap, pos.z - yaricap },
+        (Vector3){ pos.x + yaricap, pos.y + yaricap, pos.z + yaricap }
+    };
+    if (GetRayCollisionBox(ray, merkezBox).hit) return EksenTipi::MERKEZ;
+
+    return EksenTipi::YOK;
+}
+
 void Engine::Update() {
     float dt = GetFrameTime();
+    Vector2 farePos = GetMousePosition();
 
     // 1. Mouse Tekerleği ile kamera hızını değiştirme
     float tekerlek = GetMouseWheelMove();
@@ -113,82 +152,79 @@ void Engine::Update() {
         EnableCursor();
     }
 
-    // 4. Standart Editör Modu (Sağ tık basılı DEĞİLKEN)
+    // 4. Standart Editör Modu & Fare ile Eksen Sürükleme (Sağ tık basılı DEĞİLKEN)
     if (!IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-        // Obje Seçimi (Sol Tık Raycast)
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            Ray ray = GetMouseRay(GetMousePosition(), kamera);
-            seciliNesneIndeksi = -1;
-            float enYakinMesafe = 999999.0f;
-
-            for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
-                RayCollision carpi = GetRayCollisionBox(ray, nesneler[i].GetBoundingBox());
-                if (carpi.hit && carpi.distance < enYakinMesafe) {
-                    enYakinMesafe = carpi.distance;
-                    seciliNesneIndeksi = i;
-                }
-            }
-        }
-
-        // Mod Değiştirme Tuşları (W: Konum, E: Rotasyon, R: Ölçek)
+        // Mod Değiştirme Kısayolları (W: Konum, E: Rotasyon, R: Ölçek)
         if (IsKeyPressed(KEY_W)) aktifMod = TransformModu::KONUM;
         if (IsKeyPressed(KEY_E)) aktifMod = TransformModu::ROTASYON;
         if (IsKeyPressed(KEY_R)) aktifMod = TransformModu::OLCEK;
 
-        // 5. Seçili Nesneyi Numpad veya Yön Tuşlarıyla / I-J-K-L-U-O ile Değiştirme
-        if (seciliNesneIndeksi != -1 && seciliNesneIndeksi < static_cast<int>(nesneler.size())) {
-            Entity& secili = nesneler[seciliNesneIndeksi];
-            float deltaSpeed = 3.0f * dt;
+        // Sol Tıka Basıldığı An
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            Ray ray = GetMouseRay(farePos, kamera);
+            sonFarePozisyonu = farePos;
 
-            // Shift'e basılırsa 4 kat daha hızlı değiştir
-            if (IsKeyDown(KEY_LEFT_SHIFT)) deltaSpeed *= 4.0f;
-
-            if (aktifMod == TransformModu::KONUM) {
-                // X (Sağ-Sol: D / A) | Y (Yukarı-Aşağı: Space / C) | Z (İleri-Geri: W / S) -> Tuşlar I,K,J,L,U,O ile
-                if (IsKeyDown(KEY_L)) secili.pozisyon.x += deltaSpeed;
-                if (IsKeyDown(KEY_J)) secili.pozisyon.x -= deltaSpeed;
-                if (IsKeyDown(KEY_I)) secili.pozisyon.z -= deltaSpeed;
-                if (IsKeyDown(KEY_K)) secili.pozisyon.z += deltaSpeed;
-                if (IsKeyDown(KEY_O)) secili.pozisyon.y += deltaSpeed;
-                if (IsKeyDown(KEY_U)) secili.pozisyon.y -= deltaSpeed;
-            } 
-            else if (aktifMod == TransformModu::ROTASYON) {
-                float rotSpeed = 90.0f * dt;
-                if (IsKeyDown(KEY_LEFT_SHIFT)) rotSpeed *= 2.0f;
-
-                if (IsKeyDown(KEY_J)) secili.rotasyon.y -= rotSpeed; // Yaw (Y Ekseni etrafında)
-                if (IsKeyDown(KEY_L)) secili.rotasyon.y += rotSpeed;
-                if (IsKeyDown(KEY_I)) secili.rotasyon.x -= rotSpeed; // Pitch (X Ekseni)
-                if (IsKeyDown(KEY_K)) secili.rotasyon.x += rotSpeed;
-                if (IsKeyDown(KEY_U)) secili.rotasyon.z -= rotSpeed; // Roll (Z Ekseni)
-                if (IsKeyDown(KEY_O)) secili.rotasyon.z += rotSpeed;
-            } 
-            else if (aktifMod == TransformModu::OLCEK) {
-                if (IsKeyDown(KEY_L)) secili.olcek.x += deltaSpeed;
-                if (IsKeyDown(KEY_J)) secili.olcek.x = fmaxf(0.1f, secili.olcek.x - deltaSpeed);
-                if (IsKeyDown(KEY_O)) secili.olcek.y += deltaSpeed;
-                if (IsKeyDown(KEY_U)) secili.olcek.y = fmaxf(0.1f, secili.olcek.y - deltaSpeed);
-                if (IsKeyDown(KEY_I)) secili.olcek.z += deltaSpeed;
-                if (IsKeyDown(KEY_K)) secili.olcek.z = fmaxf(0.1f, secili.olcek.z - deltaSpeed);
-                
-                // Hepsini birden orantılı büyütüp küçültme (P / M)
-                if (IsKeyDown(KEY_P)) {
-                    secili.olcek.x += deltaSpeed;
-                    secili.olcek.y += deltaSpeed;
-                    secili.olcek.z += deltaSpeed;
-                }
-                if (IsKeyDown(KEY_M)) {
-                    secili.olcek.x = fmaxf(0.1f, secili.olcek.x - deltaSpeed);
-                    secili.olcek.y = fmaxf(0.1f, secili.olcek.y - deltaSpeed);
-                    secili.olcek.z = fmaxf(0.1f, secili.olcek.z - deltaSpeed);
-                }
+            // Önce seçili nesnenin gizmo eksenine mi tıkladık?
+            if (seciliNesneIndeksi != -1 && seciliNesneIndeksi < static_cast<int>(nesneler.size())) {
+                suruklenenEksen = AlgilaGizmoEkseni(nesneler[seciliNesneIndeksi], ray);
             }
 
-            // Objeyi sıfırla (R Tuşuna çift tıklama veya Home tuşu)
-            if (IsKeyPressed(KEY_HOME)) {
-                secili.rotasyon = (Vector3){ 0.0f, 0.0f, 0.0f };
-                secili.olcek = (Vector3){ 2.0f, 2.0f, 2.0f };
+            // Eğer eksene tıklamadıysak yeni bir nesne seçmeyi dene
+            if (suruklenenEksen == EksenTipi::YOK) {
+                seciliNesneIndeksi = -1;
+                float enYakinMesafe = 999999.0f;
+
+                for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
+                    RayCollision carpi = GetRayCollisionBox(ray, nesneler[i].GetBoundingBox());
+                    if (carpi.hit && carpi.distance < enYakinMesafe) {
+                        enYakinMesafe = carpi.distance;
+                        seciliNesneIndeksi = i;
+                    }
+                }
             }
+        }
+
+        // Sol Tık Basılıyken Fareyi Sürükleme (Eksen Manipülasyonu)
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && suruklenenEksen != EksenTipi::YOK) {
+            Vector2 fareDelta = { farePos.x - sonFarePozisyonu.x, farePos.y - sonFarePozisyonu.y };
+            sonFarePozisyonu = farePos;
+
+            if (seciliNesneIndeksi != -1 && seciliNesneIndeksi < static_cast<int>(nesneler.size())) {
+                Entity& secili = nesneler[seciliNesneIndeksi];
+                float hassasiyet = 0.05f;
+                float suruklemeMiktari = (fareDelta.x - fareDelta.y) * hassasiyet;
+
+                // Shift ile daha hassas ayar
+                if (IsKeyDown(KEY_LEFT_SHIFT)) suruklemeMiktari *= 0.25f;
+
+                if (aktifMod == TransformModu::KONUM) {
+                    if (suruklenenEksen == EksenTipi::X) secili.pozisyon.x += fareDelta.x * hassasiyet;
+                    if (suruklenenEksen == EksenTipi::Y) secili.pozisyon.y -= fareDelta.y * hassasiyet;
+                    if (suruklenenEksen == EksenTipi::Z) secili.pozisyon.z += (fareDelta.x + fareDelta.y) * hassasiyet;
+                }
+                else if (aktifMod == TransformModu::ROTASYON) {
+                    float rotSens = 0.8f;
+                    if (suruklenenEksen == EksenTipi::X) secili.rotasyon.x -= fareDelta.y * rotSens;
+                    if (suruklenenEksen == EksenTipi::Y) secili.rotasyon.y += fareDelta.x * rotSens;
+                    if (suruklenenEksen == EksenTipi::Z) secili.rotasyon.z += (fareDelta.x - fareDelta.y) * rotSens;
+                }
+                else if (aktifMod == TransformModu::OLCEK) {
+                    if (suruklenenEksen == EksenTipi::X) secili.olcek.x = fmaxf(0.1f, secili.olcek.x + fareDelta.x * hassasiyet);
+                    if (suruklenenEksen == EksenTipi::Y) secili.olcek.y = fmaxf(0.1f, secili.olcek.y - fareDelta.y * hassasiyet);
+                    if (suruklenenEksen == EksenTipi::Z) secili.olcek.z = fmaxf(0.1f, secili.olcek.z + (fareDelta.x + fareDelta.y) * hassasiyet);
+                    if (suruklenenEksen == EksenTipi::MERKEZ) {
+                        float artis = suruklemeMiktari;
+                        secili.olcek.x = fmaxf(0.1f, secili.olcek.x + artis);
+                        secili.olcek.y = fmaxf(0.1f, secili.olcek.y + artis);
+                        secili.olcek.z = fmaxf(0.1f, secili.olcek.z + artis);
+                    }
+                }
+            }
+        }
+
+        // Sol tık bırakıldığında sürüklemeyi bitir
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            suruklenenEksen = EksenTipi::YOK;
         }
     }
 
@@ -196,6 +232,7 @@ void Engine::Update() {
     if (IsKeyPressed(KEY_ESCAPE)) {
         if (seciliNesneIndeksi != -1) {
             seciliNesneIndeksi = -1;
+            suruklenenEksen = EksenTipi::YOK;
         } else {
             calisiyorMu = false;
         }
@@ -206,33 +243,47 @@ void Engine::CizTransformGizmo(const Entity& nesne) {
     Vector3 pos = nesne.pozisyon;
     float gizmoUzunluk = 2.5f;
 
+    // Sürüklenen eksen sarı parlar
+    Color xRenk = (suruklenenEksen == EksenTipi::X) ? YELLOW : RED;
+    Color yRenk = (suruklenenEksen == EksenTipi::Y) ? YELLOW : GREEN;
+    Color zRenk = (suruklenenEksen == EksenTipi::Z) ? YELLOW : BLUE;
+    Color mRenk = (suruklenenEksen == EksenTipi::MERKEZ) ? YELLOW : WHITE;
+
+    // Merkez Küre (Genel Seçim / Bütünsel Ölçekleme Tutamacı)
+    DrawSphere(pos, 0.25f, mRenk);
+
     if (aktifMod == TransformModu::KONUM) {
-        // Konum Modu: Uçlarında ok olan doğrusal eksenler
-        DrawLine3D(pos, (Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, RED);
-        DrawSphere((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, 0.15f, RED);
+        // X Ekseni (Kırmızı Ok)
+        DrawLine3D(pos, (Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, xRenk);
+        DrawSphere((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, 0.25f, xRenk);
 
-        DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, GREEN);
-        DrawSphere((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, 0.15f, GREEN);
+        // Y Ekseni (Yeşil Ok)
+        DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, yRenk);
+        DrawSphere((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, 0.25f, yRenk);
 
-        DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, BLUE);
-        DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, 0.15f, BLUE);
+        // Z Ekseni (Mavi Ok)
+        DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, zRenk);
+        DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, 0.25f, zRenk);
     } 
     else if (aktifMod == TransformModu::ROTASYON) {
-        // Rotasyon Modu: 3 Boyutlu dönme çemberleri/halkaları
-        DrawCircle3D(pos, 2.0f, (Vector3){ 1.0f, 0.0f, 0.0f }, 90.0f, RED);   // X etrafında halka
-        DrawCircle3D(pos, 2.0f, (Vector3){ 0.0f, 1.0f, 0.0f }, 0.0f, GREEN);  // Y etrafında halka
-        DrawCircle3D(pos, 2.0f, (Vector3){ 0.0f, 0.0f, 1.0f }, 90.0f, BLUE);  // Z etrafında halka
+        DrawCircle3D(pos, 2.5f, (Vector3){ 1.0f, 0.0f, 0.0f }, 90.0f, xRenk);
+        DrawCircle3D(pos, 2.5f, (Vector3){ 0.0f, 1.0f, 0.0f }, 0.0f, yRenk);
+        DrawCircle3D(pos, 2.5f, (Vector3){ 0.0f, 0.0f, 1.0f }, 90.0f, zRenk);
+
+        // Tutamaç Küreleri
+        DrawSphere((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, 0.25f, xRenk);
+        DrawSphere((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, 0.25f, yRenk);
+        DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, 0.25f, zRenk);
     } 
     else if (aktifMod == TransformModu::OLCEK) {
-        // Ölçek Modu: Uçlarında küpler olan eksenler
-        DrawLine3D(pos, (Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, RED);
-        DrawCube((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, 0.25f, 0.25f, 0.25f, RED);
+        DrawLine3D(pos, (Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, xRenk);
+        DrawCube((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, 0.35f, 0.35f, 0.35f, xRenk);
 
-        DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, GREEN);
-        DrawCube((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, 0.25f, 0.25f, 0.25f, GREEN);
+        DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, yRenk);
+        DrawCube((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, 0.35f, 0.35f, 0.35f, yRenk);
 
-        DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, BLUE);
-        DrawCube((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, 0.25f, 0.25f, 0.25f, BLUE);
+        DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, zRenk);
+        DrawCube((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, 0.35f, 0.35f, 0.35f, zRenk);
     }
 }
 
@@ -297,14 +348,14 @@ void Engine::Render() {
         EndMode3D();
         // --- 3D VIEWPORT BİTİŞİ ---
 
-        // --- 2D ARAYÜZ (HUD) & MOD BİLGİLERİ ---
+        // --- 2D ARAYÜZ (HUD) ---
         
         // Sol Üst Bilgi Paneli
         DrawRectangleRounded((Rectangle){ 20.0f, 20.0f, 520.0f, 115.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
         DrawRectangleRoundedLines((Rectangle){ 20.0f, 20.0f, 520.0f, 115.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
 
         DrawText("VIENTO ENGINE 3D - VIEWPORT", 35, 30, 18, (Color){ 240, 245, 255, 255 });
-        DrawText("Fare Sol Tik: Obje Sec | Sag Tik + WASD/QE: Kamera", 35, 54, 13, (Color){ 170, 180, 200, 255 });
+        DrawText("Fare Sol Tik: Obje Sec & Eksenden Tut Surukle", 35, 54, 13, (Color){ 170, 180, 200, 255 });
         
         // Aktif Mod Vurgusu (W, E, R tuşları)
         const char* modAdi = (aktifMod == TransformModu::KONUM) ? "[W] Konum (Translate)" :
@@ -313,11 +364,11 @@ void Engine::Render() {
                          (aktifMod == TransformModu::ROTASYON) ? GREEN : ORANGE;
 
         DrawText(TextFormat("Aktif Mod: %s", modAdi), 35, 74, 14, modRengi);
-        DrawText("Manipulasyon: I, K, J, L (X/Z) | U, O (Y) | Shift: Hizli", 35, 94, 12, (Color){ 255, 205, 80, 255 });
+        DrawText("Kamera: Sag Tik + WASD/QE | Tekerlek: Hiz | ESC: Cikis", 35, 94, 12, (Color){ 255, 205, 80, 255 });
 
         // Sol Alt: Seçili Obje Transform Paneli
-        DrawRectangleRounded((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 480.0f, 65.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
-        DrawRectangleRoundedLines((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 480.0f, 65.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
+        DrawRectangleRounded((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 490.0f, 65.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
+        DrawRectangleRoundedLines((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 490.0f, 65.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
 
         if (seciliNesneIndeksi != -1) {
             const Entity& secili = nesneler[seciliNesneIndeksi];
