@@ -2,6 +2,7 @@
 
 #include "raylib.h"
 #include "raymath.h"
+#include "rlgl.h"
 
 // 3D uzaydaki bir nesneyi temsil eden temel yapı
 struct Entity {
