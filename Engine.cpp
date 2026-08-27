@@ -213,12 +213,14 @@ void Engine::InitMeshes() {
     kureMesh = GenMeshSphere(0.5f, 32, 32);
     silindirMesh = GenMeshCylinder(0.5f, 1.0f, 32);
     ucgenMesh = GenMeshCone(0.6f, 1.0f, 4);
-    duzlemMesh = GenMeshCube(1.0f, 0.04f, 1.0f);
+    duzlemMesh = GenMeshCube(1.0f, 1.0f, 1.0f);
 
     isikMaterial = LoadMaterialDefault();
     isikMaterial.shader = isikShader;
 
     golgeMaterial = LoadMaterialDefault();
+    wireMaterial = LoadMaterialDefault();
+    outlineMaterial = LoadMaterialDefault();
 }
 
 void Engine::InitShadowmap() {
@@ -244,7 +246,7 @@ void Engine::InitShader() {
     int res = SHADOWMAP_BOYUT;
     SetShaderValue(isikShader, shadowResLoc, &res, SHADER_UNIFORM_INT);
 
-    float ortamDegeri[4] = { 0.22f, 0.23f, 0.28f, 1.0f };
+    float ortamDegeri[4] = { 0.15f, 0.16f, 0.20f, 1.0f };
     SetShaderValue(isikShader, ortamIsigiLoc, ortamDegeri, SHADER_UNIFORM_VEC4);
 }
 
@@ -263,39 +265,39 @@ void Engine::Init(int genislik, int yukseklik, const char* baslik) {
     InitShadowmap();
     InitMeshes();
 
-    // 1. Zemin Düzlemi (Plane)
+    // 1. Zemin Düzlemi (Plane - 24x24 geniş zemin)
     Entity zemin(EntityTipi::DUZLEM);
     zemin.pozisyon = (Vector3){ 0.0f, 0.0f, 0.0f };
-    zemin.olcek = (Vector3){ 18.0f, 0.04f, 18.0f };
-    zemin.renk = (Color){ 160, 168, 180, 255 };
+    zemin.olcek = (Vector3){ 24.0f, 0.06f, 24.0f };
+    zemin.renk = (Color){ 170, 175, 185, 255 };
     NesneEkle(zemin);
 
     // 2. Kırmızı Küp (Cube)
     Entity kup(EntityTipi::KUP);
-    kup.pozisyon = (Vector3){ -2.5f, 1.0f, -0.5f };
+    kup.pozisyon = (Vector3){ -3.0f, 1.0f, -1.0f };
     kup.olcek = (Vector3){ 2.0f, 2.0f, 2.0f };
     kup.renk = (Color){ 230, 75, 60, 255 };
     NesneEkle(kup);
 
     // 3. Mavi Küre (Sphere)
     Entity kure(EntityTipi::KURE);
-    kure.pozisyon = (Vector3){ 2.5f, 1.25f, 1.0f };
+    kure.pozisyon = (Vector3){ 3.0f, 1.25f, 1.0f };
     kure.olcek = (Vector3){ 2.5f, 2.5f, 2.5f };
     kure.renk = (Color){ 45, 140, 240, 255 };
     NesneEkle(kure);
 
     // 4. Yeşil Silindir (Cylinder)
     Entity silindir(EntityTipi::SILINDIR);
-    silindir.pozisyon = (Vector3){ 0.0f, 1.5f, -3.0f };
+    silindir.pozisyon = (Vector3){ 0.0f, 1.5f, -3.5f };
     silindir.olcek = (Vector3){ 1.8f, 3.0f, 1.8f };
     silindir.renk = (Color){ 60, 200, 110, 255 };
     NesneEkle(silindir);
 
-    // 5. Sarı Güneş Işığı (Directional Sun Light with Shadows)
-    IsikEkle(IsikTipi::ORTAM_GUNES, (Vector3){ 14.0f, 20.0f, 14.0f }, (Color){ 255, 248, 230, 255 }, 1.4f, 60.0f);
+    // 5. Sarı Güneş Işığı (Directional Sun Light with Deep Shadows)
+    IsikEkle(IsikTipi::ORTAM_GUNES, (Vector3){ 14.0f, 20.0f, 14.0f }, (Color){ 255, 245, 225, 255 }, 1.5f, 60.0f);
 
     // 6. Sıcak Noktasal Işık (Point Light with Attenuation Falloff)
-    IsikEkle(IsikTipi::NOKTASAL, (Vector3){ 0.0f, 4.0f, 1.5f }, (Color){ 255, 210, 120, 255 }, 2.5f, 15.0f);
+    IsikEkle(IsikTipi::NOKTASAL, (Vector3){ 0.0f, 3.5f, 2.0f }, (Color){ 255, 200, 100, 255 }, 1.2f, 10.0f);
 
     calisiyorMu = true;
 }
@@ -611,49 +613,37 @@ void Engine::SahneyiCiz(bool golgePassi) {
         if (golgePassi) {
             DrawMesh(mesh, golgeMaterial, transform);
         } else {
+            // 1. Katı Gövde Renderi (Işık & Gölge Shader'ı ile)
             isikMaterial.maps[MATERIAL_MAP_DIFFUSE].color = n.renk;
             DrawMesh(mesh, isikMaterial, transform);
 
-            // Seçim Çerçevesi ve Tel Çizgiler
+            // 2. Model Tel Çerçeveleri (Wireframe) - Mesh ile %100 Senkronize
+            if (n.cizgiler) {
+                rlEnableWireMode();
+                wireMaterial.maps[MATERIAL_MAP_DIFFUSE].color = n.cizgiRengi;
+                DrawMesh(mesh, wireMaterial, transform);
+                rlDisableWireMode();
+            }
+
+            // 3. Seçili Nesne İçin Turuncu Dış Çizgi (Selection Outline)
             bool secili = (i == seciliNesneIndeksi);
-            if (n.cizgiler || secili) {
-                rlPushMatrix();
-                    rlTranslatef(n.pozisyon.x, n.pozisyon.y, n.pozisyon.z);
-                    rlRotatef(n.rotasyon.y, 0.0f, 1.0f, 0.0f);
-                    rlRotatef(n.rotasyon.x, 1.0f, 0.0f, 0.0f);
-                    rlRotatef(n.rotasyon.z, 0.0f, 0.0f, 1.0f);
-                    rlScalef(n.olcek.x, n.olcek.y, n.olcek.z);
+            if (secili) {
+                rlEnableWireMode();
+                outlineMaterial.maps[MATERIAL_MAP_DIFFUSE].color = (Color){ 255, 140, 0, 255 };
 
-                    Color secimTuruncusu = (Color){ 255, 140, 0, 255 };
+                Vector3 scaleOutline1 = Vector3Scale(n.olcek, 1.015f);
+                if (n.tip == EntityTipi::DUZLEM) scaleOutline1.y = n.olcek.y + 0.005f;
+                Matrix matScaleOut1 = MatrixScale(scaleOutline1.x, scaleOutline1.y, scaleOutline1.z);
+                Matrix transformOut1 = MatrixMultiply(MatrixMultiply(matScaleOut1, matRot), matTrans);
+                DrawMesh(mesh, outlineMaterial, transformOut1);
 
-                    if (n.tip == EntityTipi::KUP) {
-                        if (n.cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, n.cizgiRengi);
-                        if (secili) {
-                            DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.02f, 1.02f, 1.02f, secimTuruncusu);
-                            DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.04f, 1.04f, 1.04f, secimTuruncusu);
-                        }
-                    } else if (n.tip == EntityTipi::KURE) {
-                        if (n.cizgiler) DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.5f, 16, 16, n.cizgiRengi);
-                        if (secili) {
-                            DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.52f, 16, 16, secimTuruncusu);
-                        }
-                    } else if (n.tip == EntityTipi::SILINDIR) {
-                        if (n.cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, n.cizgiRengi);
-                        if (secili) {
-                            DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.52f, 0.52f, 1.02f, 20, secimTuruncusu);
-                        }
-                    } else if (n.tip == EntityTipi::UCGEN) {
-                        if (n.cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, n.cizgiRengi);
-                        if (secili) {
-                            DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.62f, 1.02f, 4, secimTuruncusu);
-                        }
-                    } else if (n.tip == EntityTipi::DUZLEM) {
-                        if (n.cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 0.04f, 1.0f, n.cizgiRengi);
-                        if (secili) {
-                            DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.02f, 0.06f, 1.02f, secimTuruncusu);
-                        }
-                    }
-                rlPopMatrix();
+                Vector3 scaleOutline2 = Vector3Scale(n.olcek, 1.03f);
+                if (n.tip == EntityTipi::DUZLEM) scaleOutline2.y = n.olcek.y + 0.01f;
+                Matrix matScaleOut2 = MatrixScale(scaleOutline2.x, scaleOutline2.y, scaleOutline2.z);
+                Matrix transformOut2 = MatrixMultiply(MatrixMultiply(matScaleOut2, matRot), matTrans);
+                DrawMesh(mesh, outlineMaterial, transformOut2);
+
+                rlDisableWireMode();
             }
         }
     }
@@ -844,7 +834,7 @@ void Engine::CizToolbar() {
 
                     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                         Vector3 olusmaPozisyonu = (Vector3){ 0.0f, 5.0f, 0.0f };
-                        IsikEkle(lightTipleri[i], olusmaPozisyonu, lightRenkleri[i], 2.0f, 18.0f);
+                        IsikEkle(lightTipleri[i], olusmaPozisyonu, lightRenkleri[i], 1.5f, 14.0f);
                         seciliNesneIndeksi = static_cast<int>(nesneler.size()) - 1;
                         aktifMenu = MenuDurumu::KAPALI;
                     }
@@ -897,7 +887,11 @@ void Engine::Render() {
             for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
                 if (nesneler[i].tip == EntityTipi::ISIK_KAYNAGI) {
                     bool secili = (i == seciliNesneIndeksi);
-                    nesneler[i].Ciz(secili);
+                    DrawSphere(nesneler[i].pozisyon, 0.35f, (Color){ 255, 230, 80, 255 });
+                    DrawSphereWires(nesneler[i].pozisyon, 0.38f, 10, 10, WHITE);
+                    if (secili) {
+                        DrawSphereWires(nesneler[i].pozisyon, 0.48f, 12, 12, (Color){ 255, 140, 0, 255 });
+                    }
                 }
 
                 if (i == seciliNesneIndeksi) {

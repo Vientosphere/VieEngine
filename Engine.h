@@ -88,7 +88,7 @@ private:
     int shadowResLoc;
     int ortamIsigiLoc;
 
-    // Primitive Meshes & Materials
+    // Primitive GPU Meshes & Materials
     Mesh kupMesh;
     Mesh kureMesh;
     Mesh silindirMesh;
@@ -97,6 +97,8 @@ private:
 
     Material isikMaterial;
     Material golgeMaterial;
+    Material wireMaterial;
+    Material outlineMaterial;
 
     std::vector<Isik> isiklar;
     std::vector<Entity> nesneler;
