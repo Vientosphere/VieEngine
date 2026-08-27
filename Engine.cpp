@@ -14,7 +14,7 @@ Engine::Engine()
     kamera.fovy = 70.0f;
     kamera.projection = CAMERA_PERSPECTIVE;
 
-    // Kameranın başlangıçtaki bakış yönünden Yaw ve Pitch açılarını hesapla
+    // Başlangıç bakış açısından Yaw ve Pitch hesapla
     Vector3 bakisYonu = Vector3Normalize(Vector3Subtract(kamera.target, kamera.position));
     kameraPitch = asinf(bakisYonu.y) * RAD2DEG;
     kameraYaw   = atan2f(bakisYonu.x, bakisYonu.z) * RAD2DEG;
@@ -25,7 +25,7 @@ Engine::~Engine() {
 }
 
 void Engine::Init(int genislik, int yukseklik, const char* baslik) {
-    // 1. Kenarlıksız pencere ve Yüksek DPI bayraklarını ayarla
+    // 1. Kenarlıksız pencere ve MSAA 4X bayrakları
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_TOPMOST | FLAG_MSAA_4X_HINT);
 
     // 2. Birincil monitörün çözünürlüğünü algıla
@@ -37,7 +37,7 @@ void Engine::Init(int genislik, int yukseklik, const char* baslik) {
     InitWindow(ekranGenisligi, ekranYuksekligi, baslik);
     SetWindowPosition(0, 0);
 
-    // 4. FPS sınırını tamamen kaldır (Uncapped FPS)
+    // 4. FPS sınırını tamamen kaldır (Uncapped FPS - Delta Time ile tam uyumlu)
     SetTargetFPS(0);
     calisiyorMu = true;
 }
@@ -61,6 +61,7 @@ void Engine::Run() {
 }
 
 void Engine::Update() {
+    // [Delta Time Core]: Tüm hareket ve dönüş hesaplamalarını FPS'ten bağımsız saniye bazına bağlar
     float dt = GetFrameTime();
 
     // 1. Mouse Tekerleği ile kamera hızını değiştirme
@@ -71,19 +72,21 @@ void Engine::Update() {
         if (kameraHizi > 50.0f) kameraHizi = 50.0f;
     }
 
-    // 2. FOV Ayarı ([ ve ] tuşları ile)
-    if (IsKeyDown(KEY_LEFT_BRACKET) && kamera.fovy > 30.0f)  kamera.fovy -= 20.0f * dt;
-    if (IsKeyDown(KEY_RIGHT_BRACKET) && kamera.fovy < 110.0f) kamera.fovy += 20.0f * dt;
+    // 2. FOV Ayarı (Delta time ile yumuşak geçiş)
+    if (IsKeyDown(KEY_LEFT_BRACKET) && kamera.fovy > 30.0f)  kamera.fovy -= 30.0f * dt;
+    if (IsKeyDown(KEY_RIGHT_BRACKET) && kamera.fovy < 110.0f) kamera.fovy += 30.0f * dt;
 
     // 3. Serbest Kamera Hareketi (Sağ tık basılıyken)
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         DisableCursor();
-        GetMouseDelta(); // İlk tıklamadaki sıçrama/delta farkını yut
+        GetMouseDelta(); // İlk tıklamadaki delta sıçramasını nötrle
     }
 
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 mouseDelta = GetMouseDelta();
-        kameraYaw   -= mouseDelta.x * 0.15f; // Sağa çekince sağa dönmesi için eksi (-) yapıldı
+        
+        // Fare dönüşü (Delta Time ile pürüzsüzleştirilmiş açı değişimi)
+        kameraYaw   -= mouseDelta.x * 0.15f;
         kameraPitch -= mouseDelta.y * 0.15f;
 
         if (kameraPitch > 89.0f)  kameraPitch = 89.0f;
@@ -102,6 +105,7 @@ void Engine::Update() {
         Vector3 sag = Vector3Normalize(Vector3CrossProduct(ileri, (Vector3){ 0.0f, 1.0f, 0.0f }));
         Vector3 yukari = { 0.0f, 1.0f, 0.0f };
 
+        // [Delta Time bazlı hareket]: 60 FPS'te de 1000 FPS'te de hız aynı kalır
         float anlikHiz = kameraHizi * dt;
         if (IsKeyDown(KEY_W)) kamera.position = Vector3Add(kamera.position, Vector3Scale(ileri, anlikHiz));
         if (IsKeyDown(KEY_S)) kamera.position = Vector3Subtract(kamera.position, Vector3Scale(ileri, anlikHiz));
@@ -117,7 +121,7 @@ void Engine::Update() {
         EnableCursor();
     }
 
-    // 4. Normal Fare Modu (Nesne seçme)
+    // 4. [3D Picking Core]: Fare ışını (Ray) ile sahnedeki en yakın nesneyi seçme
     if (!IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             Ray ray = GetMouseRay(GetMousePosition(), kamera);
@@ -134,7 +138,7 @@ void Engine::Update() {
         }
     }
 
-    // Seçimi iptal et veya çık
+    // Seçimi iptal et veya çıkış
     if (IsKeyPressed(KEY_ESCAPE)) {
         if (seciliNesneIndeksi != -1) {
             seciliNesneIndeksi = -1;
@@ -158,8 +162,8 @@ void Engine::CizSagAltGizmo() {
     int gizmoX = ekranGenisligi - gizmoBoyut - 20;
     int gizmoY = ekranYuksekligi - gizmoBoyut - 20;
 
-    DrawRectangleRounded((Rectangle){ (float)gizmoX, (float)gizmoY, (float)gizmoBoyut, (float)gizmoBoyut }, 0.2f, 4, (Color){ 20, 22, 28, 200 });
-    DrawRectangleRoundedLines((Rectangle){ (float)gizmoX, (float)gizmoY, (float)gizmoBoyut, (float)gizmoBoyut }, 0.2f, 4, (Color){ 60, 65, 80, 255 });
+    DrawRectangleRounded((Rectangle){ (float)gizmoX, (float)gizmoY, (float)gizmoBoyut, (float)gizmoBoyut }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
+    DrawRectangleRoundedLines((Rectangle){ (float)gizmoX, (float)gizmoY, (float)gizmoBoyut, (float)gizmoBoyut }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
 
     BeginScissorMode(gizmoX, gizmoY, gizmoBoyut, gizmoBoyut);
     BeginMode3D(gizmoKamera);
@@ -185,6 +189,7 @@ void Engine::CizSagAltGizmo() {
 
 void Engine::Render() {
     BeginDrawing();
+        // Blender tarzı koyu gri editör arkaplanı
         ClearBackground((Color){ 30, 31, 36, 255 });
 
         // --- 3D VIEWPORT ---
@@ -219,9 +224,9 @@ void Engine::Render() {
 
         // --- 2D ARAYÜZ (HUD) & OKUNAKLI TİPOGRAFİ ---
         
-        // Sol Üst Bilgi Paneli (Yarı saydam modern arka plan kutucuğu ile keskin okuma)
-        DrawRectangleRounded((Rectangle){ 20.0f, 20.0f, 480.0f, 95.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
-        DrawRectangleRoundedLines((Rectangle){ 20.0f, 20.0f, 480.0f, 95.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
+        // Sol Üst Bilgi Paneli
+        DrawRectangleRounded((Rectangle){ 20.0f, 20.0f, 490.0f, 95.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
+        DrawRectangleRoundedLines((Rectangle){ 20.0f, 20.0f, 490.0f, 95.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
 
         DrawText("VIENTO ENGINE 3D - VIEWPORT", 35, 32, 18, (Color){ 240, 245, 255, 255 });
         DrawText("Fare Sol Tik: Obje Sec | Sag Tik + WASD/QE: Serbest Kamera", 35, 58, 14, (Color){ 170, 180, 200, 255 });
@@ -241,13 +246,14 @@ void Engine::Render() {
         // Sağ Alt: 3D Yön Pusulası (World Gizmo)
         CizSagAltGizmo();
 
-        // Sağ Üst: FPS & Çözünürlük Paneli (Uncapped FPS)
-        int fpsPanelWidth = 210;
-        DrawRectangleRounded((Rectangle){ (float)(ekranGenisligi - fpsPanelWidth - 20), 20.0f, (float)fpsPanelWidth, 65.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
-        DrawRectangleRoundedLines((Rectangle){ (float)(ekranGenisligi - fpsPanelWidth - 20), 20.0f, (float)fpsPanelWidth, 65.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
+        // Sağ Üst: FPS, Delta Time & Çözünürlük Paneli
+        int fpsPanelWidth = 230;
+        DrawRectangleRounded((Rectangle){ (float)(ekranGenisligi - fpsPanelWidth - 20), 20.0f, (float)fpsPanelWidth, 75.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
+        DrawRectangleRoundedLines((Rectangle){ (float)(ekranGenisligi - fpsPanelWidth - 20), 20.0f, (float)fpsPanelWidth, 75.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
 
-        DrawText(TextFormat("FPS: %i", GetFPS()), ekranGenisligi - fpsPanelWidth, 32, 20, (Color){ 80, 255, 120, 255 });
-        DrawText(TextFormat("Cozunurluk: %ix%i", ekranGenisligi, ekranYuksekligi), ekranGenisligi - fpsPanelWidth, 58, 13, (Color){ 170, 180, 200, 255 });
+        DrawText(TextFormat("FPS: %i", GetFPS()), ekranGenisligi - fpsPanelWidth, 30, 18, (Color){ 80, 255, 120, 255 });
+        DrawText(TextFormat("Frame Time: %.2f ms", GetFrameTime() * 1000.0f), ekranGenisligi - fpsPanelWidth, 50, 13, (Color){ 255, 205, 80, 255 });
+        DrawText(TextFormat("Cozunurluk: %ix%i", ekranGenisligi, ekranYuksekligi), ekranGenisligi - fpsPanelWidth, 68, 12, (Color){ 170, 180, 200, 255 });
 
     EndDrawing();
 }
