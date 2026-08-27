@@ -27,14 +27,19 @@ Engine::~Engine() {
 }
 
 void Engine::Init(int genislik, int yukseklik, const char* baslik) {
-    SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_TOPMOST | FLAG_MSAA_4X_HINT);
+    // 1. Kenarlıksız pencere ve Anti-Aliasing (MSAA 4X)
+    SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_MSAA_4X_HINT);
 
+    // 2. Birincil monitörün çözünürlüğünü algıla
     int monitor = GetCurrentMonitor();
     ekranGenisligi = GetMonitorWidth(monitor);
     ekranYuksekligi = GetMonitorHeight(monitor);
 
+    // 3. Standart pencere oluştur
     InitWindow(ekranGenisligi, ekranYuksekligi, baslik);
     SetWindowPosition(0, 0);
+
+    // 4. FPS sınırını kaldır
     SetTargetFPS(0);
     calisiyorMu = true;
 }
