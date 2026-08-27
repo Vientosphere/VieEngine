@@ -172,6 +172,13 @@ void Engine::NesneEkle(const Entity& yeniNesne) {
     nesneler.push_back(yeniNesne);
 }
 
+void Engine::Run() {
+    while (calisiyorMu && !WindowShouldClose()) {
+        Update();
+        Render();
+    }
+}
+
 void Engine::IsikEkle(IsikTipi tip, Vector3 pos, Color renk, float parlaklik) {
     if (isiklar.size() >= MAKSIMUM_ISIK_SAYISI) return;
 
