@@ -172,6 +172,9 @@ void Engine::Update() {
             // Önce seçili nesnenin gizmo eksenine mi tıkladık?
             if (seciliNesneIndeksi != -1 && seciliNesneIndeksi < static_cast<int>(nesneler.size())) {
                 suruklenenEksen = AlgilaGizmoEkseni(nesneler[seciliNesneIndeksi], ray);
+                if (suruklenenEksen != EksenTipi::YOK) {
+                    HideCursor(); // Eksen tutulduğu an fareyi gizle
+                }
             }
 
             // Eğer eksene tıklamadıysak yeni bir nesne seçmeyi dene
@@ -189,7 +192,7 @@ void Engine::Update() {
             }
         }
 
-        // Sol Tık Basılıyken Fareyi Sürükleme (Eksen Manipülasyonu)
+        // Sol Tık Basılıyken Fareyi Sürükleme (Ekran Projeksiyonlu Hatasız Eksen Hareketi)
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && suruklenenEksen != EksenTipi::YOK) {
             Vector2 fareDelta = { farePos.x - sonFarePozisyonu.x, farePos.y - sonFarePozisyonu.y };
             sonFarePozisyonu = farePos;
@@ -197,52 +200,47 @@ void Engine::Update() {
             if (seciliNesneIndeksi != -1 && seciliNesneIndeksi < static_cast<int>(nesneler.size())) {
                 Entity& secili = nesneler[seciliNesneIndeksi];
 
-                // Hassasiyeti dengeli ve pürüzsüz seviyeye çekiyoruz
-                float hassasiyet = 0.015f;
-                if (IsKeyDown(KEY_LEFT_SHIFT)) hassasiyet *= 0.25f; // İnce ayar
+                // 3D Eksenlerin ekrandaki 2D yön vektörlerini hesapla (Camera Screen Space Projection)
+                Vector2 merkez2D = GetWorldToScreen(secili.pozisyon, kamera);
+                Vector2 xEksen2D = GetWorldToScreen(Vector3Add(secili.pozisyon, (Vector3){ 1.0f, 0.0f, 0.0f }), kamera);
+                Vector2 yEksen2D = GetWorldToScreen(Vector3Add(secili.pozisyon, (Vector3){ 0.0f, 1.0f, 0.0f }), kamera);
+                Vector2 zEksen2D = GetWorldToScreen(Vector3Add(secili.pozisyon, (Vector3){ 0.0f, 0.0f, 1.0f }), kamera);
 
-                // Kameranın yatay açısına göre farenin sağa/sola hareketini doğru eksenle eşleştir
-                float yawRad = kameraYaw * DEG2RAD;
-                float fareYatayEtki = fareDelta.x * cosf(yawRad) + fareDelta.y * sinf(yawRad);
+                Vector2 dirX = Vector2Normalize(Vector2Subtract(xEksen2D, merkez2D));
+                Vector2 dirY = Vector2Normalize(Vector2Subtract(yEksen2D, merkez2D));
+                Vector2 dirZ = Vector2Normalize(Vector2Subtract(zEksen2D, merkez2D));
+
+                // Farenin 2D ekran hareketinin o 3D eksen üzerindeki izdüşümü (Nokta Çarpım / Dot Product)
+                float miktarX = (fareDelta.x * dirX.x + fareDelta.y * dirX.y) * 0.03f;
+                float miktarY = (fareDelta.x * dirY.x + fareDelta.y * dirY.y) * 0.03f;
+                float miktarZ = (fareDelta.x * dirZ.x + fareDelta.y * dirZ.y) * 0.03f;
+
+                if (IsKeyDown(KEY_LEFT_SHIFT)) {
+                    miktarX *= 0.25f;
+                    miktarY *= 0.25f;
+                    miktarZ *= 0.25f;
+                }
 
                 if (aktifMod == TransformModu::KONUM) {
-                    if (suruklenenEksen == EksenTipi::X) {
-                        // Sağa çekince +X, sola çekince -X
-                        secili.pozisyon.x += fareDelta.x * hassasiyet;
-                    }
-                    else if (suruklenenEksen == EksenTipi::Y) {
-                        // Yukarı çekince +Y, aşağı çekince -Y
-                        secili.pozisyon.y -= fareDelta.y * hassasiyet;
-                    }
-                    else if (suruklenenEksen == EksenTipi::Z) {
-                        // Mavi Z Ekseni Düzeltildi: İleri/aşağı çekince +Z, yukarı/geri çekince -Z
-                        secili.pozisyon.z -= fareDelta.y * hassasiyet;
-                    }
+                    if (suruklenenEksen == EksenTipi::X) secili.pozisyon.x += miktarX;
+                    if (suruklenenEksen == EksenTipi::Y) secili.pozisyon.y += miktarY;
+                    if (suruklenenEksen == EksenTipi::Z) secili.pozisyon.z += miktarZ; // Mavi Z Ekseni artık ekrandaki yönüyle %100 kusursuz eşleşir
                 }
                 else if (aktifMod == TransformModu::ROTASYON) {
-                    float rotHassasiyet = 0.4f;
-                    if (IsKeyDown(KEY_LEFT_SHIFT)) rotHassasiyet *= 0.25f;
+                    float rotSens = 2.5f;
+                    if (IsKeyDown(KEY_LEFT_SHIFT)) rotSens *= 0.25f;
 
-                    if (suruklenenEksen == EksenTipi::X) secili.rotasyon.x += fareDelta.y * rotHassasiyet;
-                    if (suruklenenEksen == EksenTipi::Y) secili.rotasyon.y -= fareDelta.x * rotHassasiyet;
-                    if (suruklenenEksen == EksenTipi::Z) secili.rotasyon.z += fareDelta.x * rotHassasiyet;
+                    if (suruklenenEksen == EksenTipi::X) secili.rotasyon.x -= miktarY * rotSens * 40.0f;
+                    if (suruklenenEksen == EksenTipi::Y) secili.rotasyon.y += miktarX * rotSens * 40.0f;
+                    if (suruklenenEksen == EksenTipi::Z) secili.rotasyon.z += miktarZ * rotSens * 40.0f;
                 }
                 else if (aktifMod == TransformModu::OLCEK) {
-                    float olcekHassasiyet = 0.02f;
-                    if (IsKeyDown(KEY_LEFT_SHIFT)) olcekHassasiyet *= 0.25f;
-
-                    if (suruklenenEksen == EksenTipi::X) {
-                        secili.olcek.x = fmaxf(0.1f, secili.olcek.x + fareDelta.x * olcekHassasiyet);
-                    }
-                    else if (suruklenenEksen == EksenTipi::Y) {
-                        secili.olcek.y = fmaxf(0.1f, secili.olcek.y - fareDelta.y * olcekHassasiyet);
-                    }
-                    else if (suruklenenEksen == EksenTipi::Z) {
-                        // Mavi Z Ölçeği Düzeltildi
-                        secili.olcek.z = fmaxf(0.1f, secili.olcek.z - fareDelta.y * olcekHassasiyet);
-                    }
-                    else if (suruklenenEksen == EksenTipi::MERKEZ) {
-                        float artis = (fareDelta.x - fareDelta.y) * olcekHassasiyet;
+                    if (suruklenenEksen == EksenTipi::X) secili.olcek.x = fmaxf(0.1f, secili.olcek.x + miktarX);
+                    if (suruklenenEksen == EksenTipi::Y) secili.olcek.y = fmaxf(0.1f, secili.olcek.y + miktarY);
+                    if (suruklenenEksen == EksenTipi::Z) secili.olcek.z = fmaxf(0.1f, secili.olcek.z + miktarZ);
+                    if (suruklenenEksen == EksenTipi::MERKEZ) {
+                        float artis = (fareDelta.x - fareDelta.y) * 0.02f;
+                        if (IsKeyDown(KEY_LEFT_SHIFT)) artis *= 0.25f;
                         secili.olcek.x = fmaxf(0.1f, secili.olcek.x + artis);
                         secili.olcek.y = fmaxf(0.1f, secili.olcek.y + artis);
                         secili.olcek.z = fmaxf(0.1f, secili.olcek.z + artis);
@@ -251,8 +249,11 @@ void Engine::Update() {
             }
         }
 
-        // Sol tık bırakıldığında sürüklemeyi bitir
+        // Sol tık bırakıldığında fareyi tekrar görünür yap
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (suruklenenEksen != EksenTipi::YOK) {
+                ShowCursor(); // Fareyi tekrar görünür yap
+            }
             suruklenenEksen = EksenTipi::YOK;
         }
     }
