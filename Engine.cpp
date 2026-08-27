@@ -56,29 +56,39 @@ void Engine::Run() {
     }
 }
 
+// Ray ile Gizmo eksenine tıklanıp tıklanmadığını dinamik boyutla algıla
 EksenTipi Engine::AlgilaGizmoEkseni(const Entity& nesne, Ray ray) {
     Vector3 pos = nesne.pozisyon;
-    float mesafe = 2.5f;
-    float yaricap = 0.35f;
+    
+    // Gizmo mesafesi nesnenin boyutuna göre dinamik ölçeklenir
+    float maxBoyut = fmaxf(nesne.olcek.x, fmaxf(nesne.olcek.y, nesne.olcek.z));
+    float mesafe = fmaxf(2.0f, maxBoyut * 0.75f + 1.2f);
+    float yaricap = fmaxf(0.35f, mesafe * 0.12f);
 
+    // X Ekseni Ucu (Kırmızı)
     BoundingBox xBox = {
         (Vector3){ pos.x + mesafe - yaricap, pos.y - yaricap, pos.z - yaricap },
         (Vector3){ pos.x + mesafe + yaricap, pos.y + yaricap, pos.z + yaricap }
     };
     if (GetRayCollisionBox(ray, xBox).hit) return EksenTipi::X;
 
-    BoundingBox yBox = {
-        (Vector3){ pos.x - yaricap, pos.y + mesafe - yaricap, pos.z - yaricap },
-        (Vector3){ pos.x + yaricap, pos.y + mesafe + yaricap, pos.z + yaricap }
-    };
-    if (GetRayCollisionBox(ray, yBox).hit) return EksenTipi::Y;
+    // Y Ekseni Ucu (Yeşil) - Plane tipinde ve Ölçek modundayken devre dışı
+    if (!(nesne.tip == EntityTipi::DUZLEM && aktifMod == TransformModu::OLCEK)) {
+        BoundingBox yBox = {
+            (Vector3){ pos.x - yaricap, pos.y + mesafe - yaricap, pos.z - yaricap },
+            (Vector3){ pos.x + yaricap, pos.y + mesafe + yaricap, pos.z + yaricap }
+        };
+        if (GetRayCollisionBox(ray, yBox).hit) return EksenTipi::Y;
+    }
 
+    // Z Ekseni Ucu (Mavi)
     BoundingBox zBox = {
         (Vector3){ pos.x - yaricap, pos.y - yaricap, pos.z + mesafe - yaricap },
         (Vector3){ pos.x + yaricap, pos.y + yaricap, pos.z + mesafe + yaricap }
     };
     if (GetRayCollisionBox(ray, zBox).hit) return EksenTipi::Z;
 
+    // Merkez Nokta
     BoundingBox merkezBox = {
         (Vector3){ pos.x - yaricap, pos.y - yaricap, pos.z - yaricap },
         (Vector3){ pos.x + yaricap, pos.y + yaricap, pos.z + yaricap }
@@ -235,13 +245,23 @@ void Engine::Update() {
                 }
                 else if (aktifMod == TransformModu::OLCEK) {
                     if (suruklenenEksen == EksenTipi::X) secili.olcek.x = fmaxf(0.1f, secili.olcek.x + miktarX);
-                    if (suruklenenEksen == EksenTipi::Y) secili.olcek.y = fmaxf(0.1f, secili.olcek.y + miktarY);
+                    
+                    // Plane (Düzlem) için Y ekseninde kalınlaşma engellendi
+                    if (suruklenenEksen == EksenTipi::Y) {
+                        if (secili.tip != EntityTipi::DUZLEM) {
+                            secili.olcek.y = fmaxf(0.1f, secili.olcek.y + miktarY);
+                        }
+                    }
+                    
                     if (suruklenenEksen == EksenTipi::Z) secili.olcek.z = fmaxf(0.1f, secili.olcek.z + miktarZ);
+                    
                     if (suruklenenEksen == EksenTipi::MERKEZ) {
                         float artis = (fareDelta.x - fareDelta.y) * 0.02f;
                         if (IsKeyDown(KEY_LEFT_SHIFT)) artis *= 0.25f;
                         secili.olcek.x = fmaxf(0.1f, secili.olcek.x + artis);
-                        secili.olcek.y = fmaxf(0.1f, secili.olcek.y + artis);
+                        if (secili.tip != EntityTipi::DUZLEM) {
+                            secili.olcek.y = fmaxf(0.1f, secili.olcek.y + artis);
+                        }
                         secili.olcek.z = fmaxf(0.1f, secili.olcek.z + artis);
                     }
                 }
@@ -270,43 +290,56 @@ void Engine::Update() {
 
 void Engine::CizTransformGizmo(const Entity& nesne) {
     Vector3 pos = nesne.pozisyon;
-    float gizmoUzunluk = 2.5f;
+
+    // Nesnenin en geniş boyutuna göre gizmo mesafesini ve kalınlığını dinamik ayarla
+    float maxBoyut = fmaxf(nesne.olcek.x, fmaxf(nesne.olcek.y, nesne.olcek.z));
+    float gizmoUzunluk = fmaxf(2.0f, maxBoyut * 0.75f + 1.2f);
+    float kafaBoyut = fmaxf(0.25f, gizmoUzunluk * 0.08f);
 
     Color xRenk = (suruklenenEksen == EksenTipi::X) ? YELLOW : RED;
     Color yRenk = (suruklenenEksen == EksenTipi::Y) ? YELLOW : GREEN;
     Color zRenk = (suruklenenEksen == EksenTipi::Z) ? YELLOW : BLUE;
     Color mRenk = (suruklenenEksen == EksenTipi::MERKEZ) ? YELLOW : WHITE;
 
-    DrawSphere(pos, 0.25f, mRenk);
+    // Merkez Tutamacı
+    DrawSphere(pos, kafaBoyut * 1.1f, mRenk);
 
     if (aktifMod == TransformModu::KONUM) {
+        // X Ekseni (Kırmızı)
         DrawLine3D(pos, (Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, xRenk);
-        DrawSphere((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, 0.25f, xRenk);
+        DrawSphere((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, kafaBoyut, xRenk);
 
+        // Y Ekseni (Yeşil)
         DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, yRenk);
-        DrawSphere((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, 0.25f, yRenk);
+        DrawSphere((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, kafaBoyut, yRenk);
 
+        // Z Ekseni (Mavi)
         DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, zRenk);
-        DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, 0.25f, zRenk);
+        DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, kafaBoyut, zRenk);
     } 
     else if (aktifMod == TransformModu::ROTASYON) {
-        DrawCircle3D(pos, 2.5f, (Vector3){ 1.0f, 0.0f, 0.0f }, 90.0f, xRenk);
-        DrawCircle3D(pos, 2.5f, (Vector3){ 0.0f, 1.0f, 0.0f }, 0.0f, yRenk);
-        DrawCircle3D(pos, 2.5f, (Vector3){ 0.0f, 0.0f, 1.0f }, 90.0f, zRenk);
+        DrawCircle3D(pos, gizmoUzunluk, (Vector3){ 1.0f, 0.0f, 0.0f }, 90.0f, xRenk);
+        DrawCircle3D(pos, gizmoUzunluk, (Vector3){ 0.0f, 1.0f, 0.0f }, 0.0f, yRenk);
+        DrawCircle3D(pos, gizmoUzunluk, (Vector3){ 0.0f, 0.0f, 1.0f }, 90.0f, zRenk);
 
-        DrawSphere((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, 0.25f, xRenk);
-        DrawSphere((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, 0.25f, yRenk);
-        DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, 0.25f, zRenk);
+        DrawSphere((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, kafaBoyut, xRenk);
+        DrawSphere((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, kafaBoyut, yRenk);
+        DrawSphere((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, kafaBoyut, zRenk);
     } 
     else if (aktifMod == TransformModu::OLCEK) {
+        // X Ekseni
         DrawLine3D(pos, (Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, xRenk);
-        DrawCube((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, 0.35f, 0.35f, 0.35f, xRenk);
+        DrawCube((Vector3){ pos.x + gizmoUzunluk, pos.y, pos.z }, kafaBoyut * 1.5f, kafaBoyut * 1.5f, kafaBoyut * 1.5f, xRenk);
 
-        DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, yRenk);
-        DrawCube((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, 0.35f, 0.35f, 0.35f, yRenk);
+        // Y Ekseni (Eğer nesne Plane ise Y ekseni ölçekleme çubuğu hiç çizilmez)
+        if (nesne.tip != EntityTipi::DUZLEM) {
+            DrawLine3D(pos, (Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, yRenk);
+            DrawCube((Vector3){ pos.x, pos.y + gizmoUzunluk, pos.z }, kafaBoyut * 1.5f, kafaBoyut * 1.5f, kafaBoyut * 1.5f, yRenk);
+        }
 
+        // Z Ekseni
         DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, zRenk);
-        DrawCube((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, 0.35f, 0.35f, 0.35f, zRenk);
+        DrawCube((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, kafaBoyut * 1.5f, kafaBoyut * 1.5f, kafaBoyut * 1.5f, zRenk);
     }
 }
 
