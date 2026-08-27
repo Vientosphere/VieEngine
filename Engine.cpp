@@ -302,6 +302,9 @@ void Engine::CizTransformGizmo(const Entity& nesne) {
     Color zRenk = (suruklenenEksen == EksenTipi::Z) ? YELLOW : BLUE;
     Color mRenk = (suruklenenEksen == EksenTipi::MERKEZ) ? YELLOW : WHITE;
 
+    // Gizmo'nun nesnelerin arkasında kalmasını önlemek için Depth Test'i devre dışı bırak
+    rlDisableDepthTest();
+
     // Merkez Tutamacı
     DrawSphere(pos, kafaBoyut * 1.1f, mRenk);
 
@@ -342,6 +345,9 @@ void Engine::CizTransformGizmo(const Entity& nesne) {
         DrawLine3D(pos, (Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, zRenk);
         DrawCube((Vector3){ pos.x, pos.y, pos.z + gizmoUzunluk }, kafaBoyut * 1.5f, kafaBoyut * 1.5f, kafaBoyut * 1.5f, zRenk);
     }
+
+    // Depth Test'i tekrar aktif et
+    rlEnableDepthTest();
 }
 
 void Engine::CizSagAltGizmo() {
