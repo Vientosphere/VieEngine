@@ -166,10 +166,8 @@ void Engine::Update() {
 
         // Sol Tıka Basıldığı An
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            // Eğer Toolbar'a tıklanmadıysa 3D uzayda seçim ve gizmo sürükleme yap
-            if (!toolbarUzerinde) {
-                aktifMenu = MenuDurumu::KAPALI; // Boşluğa tıklayınca menüyü kapat
-
+            // SADECE Toolbar ve açık menü alanının DIŞINDA 3D uzay tıklaması yap
+            if (farePos.y > 45.0f && aktifMenu == MenuDurumu::KAPALI) {
                 Ray ray = GetMouseRay(farePos, kamera);
                 sonFarePozisyonu = farePos;
 
@@ -370,14 +368,23 @@ void Engine::CizToolbar() {
     }
     DrawText("+ Add", 178, 12, 14, (Color){ 240, 245, 255, 255 });
 
-    // Buton Tıklaması ile menüyü aç/kapat
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && addHover) {
-        aktifMenu = (aktifMenu == MenuDurumu::KAPALI) ? MenuDurumu::ADD_ANA : MenuDurumu::KAPALI;
+    // "+ Add" Butonuna Sol Tık
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (addHover) {
+            aktifMenu = (aktifMenu == MenuDurumu::KAPALI) ? MenuDurumu::ADD_ANA : MenuDurumu::KAPALI;
+        } else if (fare.y > 38.0f) {
+            // Menü açıkken menü dışına tıklandıysa menüyü kapat
+            Rectangle anaMenuKutusu = { 160.0f, 38.0f, 130.0f, 70.0f };
+            Rectangle subMenuKutusu = { 290.0f, 38.0f, 160.0f, 180.0f };
+            if (!CheckCollisionPointRec(fare, anaMenuKutusu) && !CheckCollisionPointRec(fare, subMenuKutusu)) {
+                aktifMenu = MenuDurumu::KAPALI;
+            }
+        }
     }
 
     // 2. Açılır Menü Mantığı
     if (aktifMenu != MenuDurumu::KAPALI) {
-        // Ana Menü Kutusu (Shapes ve Lights butonları)
+        // Ana Menü Kutusu (Shapes ve Lights)
         Rectangle anaMenuKutusu = { 160.0f, 38.0f, 130.0f, 70.0f };
         DrawRectangleRec(anaMenuKutusu, (Color){ 25, 28, 36, 250 });
         DrawRectangleLinesEx(anaMenuKutusu, 1.0f, (Color){ 60, 65, 80, 255 });
@@ -385,28 +392,12 @@ void Engine::CizToolbar() {
         Rectangle shapesItem = { 160.0f, 40.0f, 130.0f, 32.0f };
         Rectangle lightsItem = { 160.0f, 72.0f, 130.0f, 32.0f };
 
-        // Alt menü alanları (Fare alt menü üzerindeyken açık kalması için)
-        Rectangle shapesAltMenuAlani = { 290.0f, 38.0f, 140.0f, 140.0f };
-        Rectangle lightsAltMenuAlani = { 290.0f, 70.0f, 160.0f, 110.0f };
-
         bool hoverShapes = CheckCollisionPointRec(fare, shapesItem);
         bool hoverLights = CheckCollisionPointRec(fare, lightsItem);
-        bool insideShapesSub = CheckCollisionPointRec(fare, shapesAltMenuAlani);
-        bool insideLightsSub = CheckCollisionPointRec(fare, lightsAltMenuAlani);
 
-        // Menü geçiş mantığı: Sadece o satırın üzerindeyken veya o alt menünün içindeyken aktif et
-        if (hoverShapes) {
-            aktifMenu = MenuDurumu::ADD_SHAPES;
-        } else if (hoverLights) {
-            aktifMenu = MenuDurumu::ADD_LIGHTS;
-        } else if (!insideShapesSub && !insideLightsSub && !CheckCollisionPointRec(fare, anaMenuKutusu)) {
-            // Eğer fare ana menünün ve alt menülerin tamamen dışındaysa ve tıklandıysa kapat
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                aktifMenu = MenuDurumu::KAPALI;
-            }
-        }
+        if (hoverShapes) aktifMenu = MenuDurumu::ADD_SHAPES;
+        if (hoverLights) aktifMenu = MenuDurumu::ADD_LIGHTS;
 
-        // Ana Menü Öğelerini Çiz
         if (aktifMenu == MenuDurumu::ADD_SHAPES || hoverShapes) {
             DrawRectangleRec(shapesItem, (Color){ 45, 52, 70, 255 });
         }
@@ -417,7 +408,7 @@ void Engine::CizToolbar() {
         DrawText("Shapes        >", 172, 49, 13, (Color){ 230, 235, 245, 255 });
         DrawText("Lights          >", 172, 81, 13, (Color){ 230, 235, 245, 255 });
 
-        // 3. Alt Menü: SADECE Shapes Aktifken Çiz
+        // 3. Alt Menü: Shapes
         if (aktifMenu == MenuDurumu::ADD_SHAPES) {
             Rectangle shapesMenuKutusu = { 290.0f, 38.0f, 140.0f, 175.0f };
             DrawRectangleRec(shapesMenuKutusu, (Color){ 28, 32, 42, 250 });
@@ -433,7 +424,6 @@ void Engine::CizToolbar() {
                 if (itemHover) {
                     DrawRectangleRec(itemRect, (Color){ 0, 120, 215, 255 });
 
-                    // Şekil Ekleme Tıklaması
                     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                         Entity yeniNesne(shapeTipleri[i]);
                         NesneEkle(yeniNesne);
@@ -445,10 +435,11 @@ void Engine::CizToolbar() {
             }
         }
 
-        // 4. Alt Menü: SADECE Lights Aktifken Çiz
+        // 4. Alt Menü: Lights
         else if (aktifMenu == MenuDurumu::ADD_LIGHTS) {
-            DrawRectangleRec(lightsAltMenuAlani, (Color){ 28, 32, 42, 250 });
-            DrawRectangleLinesEx(lightsAltMenuAlani, 1.0f, (Color){ 60, 65, 80, 255 });
+            Rectangle lightsMenuKutusu = { 290.0f, 70.0f, 160.0f, 105.0f };
+            DrawRectangleRec(lightsMenuKutusu, (Color){ 28, 32, 42, 250 });
+            DrawRectangleLinesEx(lightsMenuKutusu, 1.0f, (Color){ 60, 65, 80, 255 });
 
             const char* lightIsimleri[] = { "Point Light", "Spot Light", "Environment Light" };
 
