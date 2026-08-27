@@ -419,13 +419,14 @@ void Engine::CizToolbar() {
 
         // 3. Alt Menü: SADECE Shapes Aktifken Çiz
         if (aktifMenu == MenuDurumu::ADD_SHAPES) {
-            DrawRectangleRec(shapesAltMenuAlani, (Color){ 28, 32, 42, 250 });
-            DrawRectangleLinesEx(shapesAltMenuAlani, 1.0f, (Color){ 60, 65, 80, 255 });
+            Rectangle shapesMenuKutusu = { 290.0f, 38.0f, 140.0f, 175.0f };
+            DrawRectangleRec(shapesMenuKutusu, (Color){ 28, 32, 42, 250 });
+            DrawRectangleLinesEx(shapesMenuKutusu, 1.0f, (Color){ 60, 65, 80, 255 });
 
-            const char* shapeIsimleri[] = { "Cube", "Sphere", "Cylinder", "Triangle" };
-            EntityTipi shapeTipleri[] = { EntityTipi::KUP, EntityTipi::KURE, EntityTipi::SILINDIR, EntityTipi::UCGEN };
+            const char* shapeIsimleri[] = { "Cube", "Sphere", "Cylinder", "Triangle", "Plane" };
+            EntityTipi shapeTipleri[] = { EntityTipi::KUP, EntityTipi::KURE, EntityTipi::SILINDIR, EntityTipi::UCGEN, EntityTipi::DUZLEM };
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 5; i++) {
                 Rectangle itemRect = { 290.0f, 40.0f + (i * 33.0f), 140.0f, 32.0f };
                 bool itemHover = CheckCollisionPointRec(fare, itemRect);
 
@@ -435,7 +436,6 @@ void Engine::CizToolbar() {
                     // Şekil Ekleme Tıklaması
                     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                         Entity yeniNesne(shapeTipleri[i]);
-                        yeniNesne.pozisyon = (Vector3){ 0.0f, 1.0f, 0.0f };
                         NesneEkle(yeniNesne);
                         seciliNesneIndeksi = static_cast<int>(nesneler.size()) - 1;
                         aktifMenu = MenuDurumu::KAPALI;

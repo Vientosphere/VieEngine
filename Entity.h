@@ -9,7 +9,8 @@ enum class EntityTipi {
     KUP,      // Cube
     KURE,     // Sphere
     SILINDIR, // Cylinder
-    UCGEN     // Triangle / Pyramid
+    UCGEN,    // Triangle / Pyramid
+    DUZLEM    // Plane / Ground
 };
 
 // 3D uzaydaki bir nesneyi temsil eden temel yapı
@@ -26,23 +27,24 @@ struct Entity {
     // Varsayılan kurucu
     Entity(EntityTipi nesneTipi = EntityTipi::KUP)
         : tip(nesneTipi),
-          pozisyon((Vector3){ 0.0f, 1.0f, 0.0f }),
+          pozisyon((Vector3){ 0.0f, (nesneTipi == EntityTipi::DUZLEM ? 0.0f : 1.0f), 0.0f }),
           rotasyon((Vector3){ 0.0f, 0.0f, 0.0f }),
-          olcek((Vector3){ 2.0f, 2.0f, 2.0f }),
+          olcek((Vector3){ (nesneTipi == EntityTipi::DUZLEM ? 10.0f : 2.0f), (nesneTipi == EntityTipi::DUZLEM ? 0.05f : 2.0f), (nesneTipi == EntityTipi::DUZLEM ? 10.0f : 2.0f) }),
           renk((Color){ 140, 145, 155, 255 }),
           cizgiRengi((Color){ 230, 235, 245, 255 }),
           cizgiler(true) {}
 
     // Nesnenin sınırlayıcı kutusu (Tıklama/Picking için)
     BoundingBox GetBoundingBox() const {
+        float yukseklik = (tip == EntityTipi::DUZLEM) ? 0.1f : olcek.y;
         Vector3 min = {
             pozisyon.x - olcek.x / 2.0f,
-            pozisyon.y - olcek.y / 2.0f,
+            pozisyon.y - yukseklik / 2.0f,
             pozisyon.z - olcek.z / 2.0f
         };
         Vector3 max = {
             pozisyon.x + olcek.x / 2.0f,
-            pozisyon.y + olcek.y / 2.0f,
+            pozisyon.y + yukseklik / 2.0f,
             pozisyon.z + olcek.z / 2.0f
         };
         return { min, max };
@@ -73,9 +75,13 @@ struct Entity {
                 if (seciliMi || cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, kenar);
             }
             else if (tip == EntityTipi::UCGEN) {
-                // Piramit / Üçgen Geometri
                 DrawCylinder((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, govde);
                 if (seciliMi || cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, kenar);
+            }
+            else if (tip == EntityTipi::DUZLEM) {
+                // Düzlem / Zemin (Geniş 2D Yüzey)
+                DrawCube((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 0.02f, 1.0f, govde);
+                if (seciliMi || cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 0.02f, 1.0f, kenar);
             }
         rlPopMatrix();
     }
