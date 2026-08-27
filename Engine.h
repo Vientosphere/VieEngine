@@ -3,6 +3,7 @@
 #include "Entity.h"
 #include "Light.h"
 #include "raylib.h"
+#include "raymath.h"
 #include "rlgl.h"
 #include <vector>
 
@@ -48,12 +49,16 @@ public:
 private:
     void InitShader();
     void InitShadowmap();
+    void InitMeshes();
     void Update();
     void Render();
     void SahneyiCiz(bool golgePassi);
     void CizToolbar();
     void CizSagAltGizmo();
     void CizTransformGizmo(const Entity& nesne);
+
+    RenderTexture2D LoadShadowmap(int width, int height);
+    void UnloadShadowmap(RenderTexture2D target);
 
     EksenTipi AlgilaGizmoEkseni(const Entity& nesne, Ray ray);
 
@@ -75,15 +80,23 @@ private:
 
     // Aydınlatma Shader & Shadow Mapping
     Shader isikShader;
-    Shader golgeShader;
     RenderTexture2D golgeHaritasi;
     Camera3D isikKamerasi;
     Matrix lightVP;
     int lightVPLoc;
     int shadowMapLoc;
     int shadowResLoc;
-    int viewPosLoc;
     int ortamIsigiLoc;
+
+    // Primitive Meshes & Materials
+    Mesh kupMesh;
+    Mesh kureMesh;
+    Mesh silindirMesh;
+    Mesh ucgenMesh;
+    Mesh duzlemMesh;
+
+    Material isikMaterial;
+    Material golgeMaterial;
 
     std::vector<Isik> isiklar;
     std::vector<Entity> nesneler;

@@ -2,27 +2,7 @@
 #include "raymath.h"
 #include "rlgl.h"
 
-// 1. Gölge Derinlik (Depth Pass) Vertex Shader
-static const char* golgeVSKaynak = R"(
-#version 330
-in vec3 vertexPosition;
-uniform mat4 mvp;
-void main() {
-    gl_Position = mvp * vec4(vertexPosition, 1.0);
-}
-)";
-
-// 1. Gölge Derinlik (Depth Pass) Fragment Shader
-static const char* golgeFSKaynak = R"(
-#version 330
-out vec4 finalColor;
-void main() {
-    // Sadece derinlik tamponuna (Z-Buffer) yazılır
-    finalColor = vec4(gl_FragCoord.z, gl_FragCoord.z, gl_FragCoord.z, 1.0);
-}
-)";
-
-// 2. Ana Aydınlatma & Gölge Vertex Shader
+// 1. Ana Aydınlatma & Gölge Vertex Shader
 static const char* isikVSKaynak = R"(
 #version 330
 in vec3 vertexPosition;
@@ -70,6 +50,7 @@ in vec2 fragTexCoord;
 in vec4 fragColor;
 in vec3 fragNormal;
 
+uniform sampler2D texture0;
 uniform vec4 colDiffuse;
 uniform vec4 ortamIsigi;
 uniform vec3 viewPos;
@@ -80,22 +61,24 @@ uniform Isik isiklar[MAKSIMUM_ISIK_SAYISI];
 
 out vec4 finalColor;
 
-// PCF (Percentage Closer Filtering) 16-Sample Yumuşak Gölge Hesaplayıcı
+// 16-Sample PCF (Percentage Closer Filtering) Yumuşak Gölge Hesaplayıcı
 float HesaplaGolge(vec3 fragPos, vec3 normal, vec3 isikYonu) {
     vec4 fragPosLightSpace = lightVP * vec4(fragPos, 1.0);
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    projCoords = (projCoords * 0.5) + 0.5; // [-1, 1] -> [0, 1] UV aralığına çevir
+    projCoords = (projCoords * 0.5) + 0.5;
 
     if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0) {
         return 1.0;
     }
 
-    // Yüzey açısına göre gölge bozulmalarını (Shadow Acne) önleyen adaptif bias
-    float bias = max(0.003 * (1.0 - dot(normal, isikYonu)), 0.0008);
+    // Eğim bazlı adaptif shadow bias
+    float cosTheta = clamp(dot(normal, isikYonu), 0.0, 1.0);
+    float bias = max(0.0035 * (1.0 - cosTheta), 0.0008);
+
     float golgeFaktoru = 0.0;
     vec2 texelSize = vec2(1.0 / float(shadowMapResolution));
 
-    // 4x4 PCF Yumuşatma Filtresi (Soft Shadows)
+    // 4x4 PCF Yumuşatma Filtresi
     for (int x = -1; x <= 2; ++x) {
         for (int y = -1; y <= 2; ++y) {
             float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
@@ -106,6 +89,9 @@ float HesaplaGolge(vec3 fragPos, vec3 normal, vec3 isikYonu) {
 }
 
 void main() {
+    vec4 texelColor = texture(texture0, fragTexCoord);
+    vec4 albedo = texelColor * colDiffuse * fragColor;
+
     vec3 normal = normalize(fragNormal);
     vec3 gorunumYonu = normalize(viewPos - fragPosition);
     vec3 toplamAydinlatma = ortamIsigi.rgb;
@@ -117,26 +103,25 @@ void main() {
             float golge = 1.0;
 
             if (isiklar[i].tip == 2) {
-                // Environment / Directional (Güneş Işığı & Gölge)
+                // Environment / Directional Light (Güneş Işığı & Dinamik Gölge)
                 isikYonu = normalize(isiklar[i].pozisyon - isiklar[i].hedef);
                 golge = HesaplaGolge(fragPosition, normal, isikYonu);
             } else {
-                // Point & Spot Light (Fiziksel Ters Kare Zayıflaması / Inverse Square Law)
+                // Point & Spot Light (Inverse Square Law Falloff)
                 vec3 fark = isiklar[i].pozisyon - fragPosition;
                 float mesafe = length(fark);
                 isikYonu = normalize(fark);
 
-                // Attenuation Radius Falloff
                 float yaricap = max(isiklar[i].zayiflamaYaricapi, 0.1);
                 float mesafeOrani = clamp(1.0 - pow(mesafe / yaricap, 4.0), 0.0, 1.0);
-                sonum = (mesafeOrani * mesafeOrani) / (mesafe * mesafe + 1.0);
+                sonum = (mesafeOrani * mesafeOrani) / (mesafe * mesafe + 1.0) * (yaricap * 0.7);
 
                 if (isiklar[i].tip == 1) {
                     // Spot Light Inner & Outer Cone Açı Yumuşatması
                     vec3 spotYonu = normalize(isiklar[i].hedef - isiklar[i].pozisyon);
-                    float theta = dot(isikYonu, -spotYonu);
+                    float theta = dot(-isikYonu, spotYonu);
                     float epsilon = isiklar[i].icKoniAcisi - isiklar[i].disKoniAcisi;
-                    float spotYogunluk = clamp((theta - isiklar[i].disKoniAcisi) / epsilon, 0.0, 1.0);
+                    float spotYogunluk = clamp((theta - isiklar[i].disKoniAcisi) / max(epsilon, 0.0001), 0.0, 1.0);
                     sonum *= spotYogunluk;
                 }
             }
@@ -148,17 +133,49 @@ void main() {
             // Specular (Blinn-Phong)
             vec3 yariVektor = normalize(isikYonu + gorunumYonu);
             float NdotH = max(dot(normal, yariVektor), 0.0);
-            float spec = pow(NdotH, 48.0);
+            float spec = pow(NdotH, 32.0);
             vec3 specular = isiklar[i].renk.rgb * spec * 0.4 * isiklar[i].parlaklik;
 
             toplamAydinlatma += ((diffuse + specular) * sonum) * golge;
         }
     }
 
-    vec4 nesneRengi = colDiffuse * fragColor;
-    finalColor = vec4(nesneRengi.rgb * toplamAydinlatma, nesneRengi.a);
+    finalColor = vec4(albedo.rgb * toplamAydinlatma, albedo.a);
 }
 )";
+
+RenderTexture2D Engine::LoadShadowmap(int width, int height) {
+    RenderTexture2D target = { 0 };
+    target.id = rlLoadFramebuffer();
+    target.texture.width = width;
+    target.texture.height = height;
+
+    if (target.id > 0) {
+        rlEnableFramebuffer(target.id);
+
+        target.depth.id = rlLoadTextureDepth(width, height, false);
+        target.depth.width = width;
+        target.depth.height = height;
+        target.depth.format = 19; // DEPTH_COMPONENT_24BIT
+        target.depth.mipmaps = 1;
+
+        rlFramebufferAttach(target.id, target.depth.id, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_TEXTURE2D, 0);
+
+        if (rlFramebufferComplete(target.id)) {
+            TraceLog(LOG_INFO, "FBO: Shadowmap Framebuffer olusturuldu (ID %i)", target.id);
+        }
+
+        rlDisableFramebuffer();
+    }
+    return target;
+}
+
+void Engine::UnloadShadowmap(RenderTexture2D target) {
+    if (target.id > 0) {
+        rlUnloadFramebuffer(target.id);
+        rlUnloadTexture(target.depth.id);
+    }
+}
 
 Engine::Engine()
     : ekranGenisligi(1280), ekranYuksekligi(720), calisiyorMu(false),
@@ -168,22 +185,22 @@ Engine::Engine()
       aktifMenu(MenuDurumu::KAPALI) {
 
     kamera = { 0 };
-    kamera.position = (Vector3){ 8.0f, 7.0f, 8.0f };
-    kamera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
+    kamera.position = (Vector3){ 9.0f, 8.0f, 9.0f };
+    kamera.target = (Vector3){ 0.0f, 1.0f, 0.0f };
     kamera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    kamera.fovy = 70.0f;
+    kamera.fovy = 65.0f;
     kamera.projection = CAMERA_PERSPECTIVE;
 
     Vector3 bakisYonu = Vector3Normalize(Vector3Subtract(kamera.target, kamera.position));
     kameraPitch = asinf(bakisYonu.y) * RAD2DEG;
     kameraYaw   = atan2f(bakisYonu.x, bakisYonu.z) * RAD2DEG;
 
-    // Gölge Işık Kamerası (Ortografik / Güneş Projeksiyonu)
+    // Gölge Işık Kamerası (Ortografik Güneş Projeksiyonu)
     isikKamerasi = { 0 };
-    isikKamerasi.position = (Vector3){ 12.0f, 16.0f, 12.0f };
+    isikKamerasi.position = (Vector3){ 14.0f, 20.0f, 14.0f };
     isikKamerasi.target = (Vector3){ 0.0f, 0.0f, 0.0f };
     isikKamerasi.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    isikKamerasi.fovy = 35.0f;
+    isikKamerasi.fovy = 40.0f;
     isikKamerasi.projection = CAMERA_ORTHOGRAPHIC;
 }
 
@@ -191,21 +208,33 @@ Engine::~Engine() {
     Shutdown();
 }
 
+void Engine::InitMeshes() {
+    kupMesh = GenMeshCube(1.0f, 1.0f, 1.0f);
+    kureMesh = GenMeshSphere(0.5f, 32, 32);
+    silindirMesh = GenMeshCylinder(0.5f, 1.0f, 32);
+    ucgenMesh = GenMeshCone(0.6f, 1.0f, 4);
+    duzlemMesh = GenMeshCube(1.0f, 0.04f, 1.0f);
+
+    isikMaterial = LoadMaterialDefault();
+    isikMaterial.shader = isikShader;
+
+    golgeMaterial = LoadMaterialDefault();
+}
+
 void Engine::InitShadowmap() {
-    golgeHaritasi = LoadRenderTexture(SHADOWMAP_BOYUT, SHADOWMAP_BOYUT);
-    
-    // Depth Texture filtreleme ve wrapping ayarları
+    golgeHaritasi = LoadShadowmap(SHADOWMAP_BOYUT, SHADOWMAP_BOYUT);
     SetTextureFilter(golgeHaritasi.depth, TEXTURE_FILTER_BILINEAR);
     SetTextureWrap(golgeHaritasi.depth, TEXTURE_WRAP_CLAMP);
-
-    golgeShader = LoadShaderFromMemory(golgeVSKaynak, golgeFSKaynak);
 }
 
 void Engine::InitShader() {
     isikShader = LoadShaderFromMemory(isikVSKaynak, isikFSKaynak);
 
     isikShader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(isikShader, "viewPos");
-    isikShader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocationAttrib(isikShader, "matModel");
+    isikShader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(isikShader, "matModel");
+    isikShader.locs[SHADER_LOC_MATRIX_NORMAL] = GetShaderLocation(isikShader, "matNormal");
+    isikShader.locs[SHADER_LOC_MATRIX_MVP] = GetShaderLocation(isikShader, "mvp");
+    isikShader.locs[SHADER_LOC_MAP_DIFFUSE] = GetShaderLocation(isikShader, "texture0");
 
     lightVPLoc = GetShaderLocation(isikShader, "lightVP");
     shadowMapLoc = GetShaderLocation(isikShader, "shadowMap");
@@ -215,7 +244,7 @@ void Engine::InitShader() {
     int res = SHADOWMAP_BOYUT;
     SetShaderValue(isikShader, shadowResLoc, &res, SHADER_UNIFORM_INT);
 
-    float ortamDegeri[4] = { 0.18f, 0.19f, 0.23f, 1.0f };
+    float ortamDegeri[4] = { 0.22f, 0.23f, 0.28f, 1.0f };
     SetShaderValue(isikShader, ortamIsigiLoc, ortamDegeri, SHADER_UNIFORM_VEC4);
 }
 
@@ -232,19 +261,54 @@ void Engine::Init(int genislik, int yukseklik, const char* baslik) {
 
     InitShader();
     InitShadowmap();
+    InitMeshes();
 
-    // Sahneye 1 Güneş Işığı ve 1 Point Light ekle
-    IsikEkle(IsikTipi::ORTAM_GUNES, (Vector3){ 12.0f, 16.0f, 12.0f }, (Color){ 255, 248, 235, 255 }, 1.4f, 50.0f);
-    IsikEkle(IsikTipi::NOKTASAL, (Vector3){ 3.0f, 4.0f, 2.0f }, (Color){ 255, 210, 120, 255 }, 2.0f, 14.0f);
+    // 1. Zemin Düzlemi (Plane)
+    Entity zemin(EntityTipi::DUZLEM);
+    zemin.pozisyon = (Vector3){ 0.0f, 0.0f, 0.0f };
+    zemin.olcek = (Vector3){ 18.0f, 0.04f, 18.0f };
+    zemin.renk = (Color){ 160, 168, 180, 255 };
+    NesneEkle(zemin);
+
+    // 2. Kırmızı Küp (Cube)
+    Entity kup(EntityTipi::KUP);
+    kup.pozisyon = (Vector3){ -2.5f, 1.0f, -0.5f };
+    kup.olcek = (Vector3){ 2.0f, 2.0f, 2.0f };
+    kup.renk = (Color){ 230, 75, 60, 255 };
+    NesneEkle(kup);
+
+    // 3. Mavi Küre (Sphere)
+    Entity kure(EntityTipi::KURE);
+    kure.pozisyon = (Vector3){ 2.5f, 1.25f, 1.0f };
+    kure.olcek = (Vector3){ 2.5f, 2.5f, 2.5f };
+    kure.renk = (Color){ 45, 140, 240, 255 };
+    NesneEkle(kure);
+
+    // 4. Yeşil Silindir (Cylinder)
+    Entity silindir(EntityTipi::SILINDIR);
+    silindir.pozisyon = (Vector3){ 0.0f, 1.5f, -3.0f };
+    silindir.olcek = (Vector3){ 1.8f, 3.0f, 1.8f };
+    silindir.renk = (Color){ 60, 200, 110, 255 };
+    NesneEkle(silindir);
+
+    // 5. Sarı Güneş Işığı (Directional Sun Light with Shadows)
+    IsikEkle(IsikTipi::ORTAM_GUNES, (Vector3){ 14.0f, 20.0f, 14.0f }, (Color){ 255, 248, 230, 255 }, 1.4f, 60.0f);
+
+    // 6. Sıcak Noktasal Işık (Point Light with Attenuation Falloff)
+    IsikEkle(IsikTipi::NOKTASAL, (Vector3){ 0.0f, 4.0f, 1.5f }, (Color){ 255, 210, 120, 255 }, 2.5f, 15.0f);
 
     calisiyorMu = true;
 }
 
 void Engine::Shutdown() {
     if (calisiyorMu) {
+        UnloadMesh(kupMesh);
+        UnloadMesh(kureMesh);
+        UnloadMesh(silindirMesh);
+        UnloadMesh(ucgenMesh);
+        UnloadMesh(duzlemMesh);
         UnloadShader(isikShader);
-        UnloadShader(golgeShader);
-        UnloadRenderTexture(golgeHaritasi);
+        UnloadShadowmap(golgeHaritasi);
         CloseWindow();
         calisiyorMu = false;
     }
@@ -528,9 +592,69 @@ void Engine::Update() {
 
 void Engine::SahneyiCiz(bool golgePassi) {
     for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
-        if (nesneler[i].tip != EntityTipi::ISIK_KAYNAGI) {
-            bool secili = (i == seciliNesneIndeksi && !golgePassi);
-            nesneler[i].Ciz(secili);
+        const Entity& n = nesneler[i];
+        if (n.tip == EntityTipi::ISIK_KAYNAGI) continue;
+
+        Matrix matScale = MatrixScale(n.olcek.x, n.olcek.y, n.olcek.z);
+        Matrix matRot = MatrixMultiply(MatrixRotateZ(n.rotasyon.z * DEG2RAD),
+                        MatrixMultiply(MatrixRotateX(n.rotasyon.x * DEG2RAD), MatrixRotateY(n.rotasyon.y * DEG2RAD)));
+        Matrix matTrans = MatrixTranslate(n.pozisyon.x, n.pozisyon.y, n.pozisyon.z);
+        Matrix transform = MatrixMultiply(MatrixMultiply(matScale, matRot), matTrans);
+
+        Mesh mesh;
+        if (n.tip == EntityTipi::KUP) mesh = kupMesh;
+        else if (n.tip == EntityTipi::KURE) mesh = kureMesh;
+        else if (n.tip == EntityTipi::SILINDIR) mesh = silindirMesh;
+        else if (n.tip == EntityTipi::UCGEN) mesh = ucgenMesh;
+        else mesh = duzlemMesh;
+
+        if (golgePassi) {
+            DrawMesh(mesh, golgeMaterial, transform);
+        } else {
+            isikMaterial.maps[MATERIAL_MAP_DIFFUSE].color = n.renk;
+            DrawMesh(mesh, isikMaterial, transform);
+
+            // Seçim Çerçevesi ve Tel Çizgiler
+            bool secili = (i == seciliNesneIndeksi);
+            if (n.cizgiler || secili) {
+                rlPushMatrix();
+                    rlTranslatef(n.pozisyon.x, n.pozisyon.y, n.pozisyon.z);
+                    rlRotatef(n.rotasyon.y, 0.0f, 1.0f, 0.0f);
+                    rlRotatef(n.rotasyon.x, 1.0f, 0.0f, 0.0f);
+                    rlRotatef(n.rotasyon.z, 0.0f, 0.0f, 1.0f);
+                    rlScalef(n.olcek.x, n.olcek.y, n.olcek.z);
+
+                    Color secimTuruncusu = (Color){ 255, 140, 0, 255 };
+
+                    if (n.tip == EntityTipi::KUP) {
+                        if (n.cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 1.0f, 1.0f, n.cizgiRengi);
+                        if (secili) {
+                            DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.02f, 1.02f, 1.02f, secimTuruncusu);
+                            DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.04f, 1.04f, 1.04f, secimTuruncusu);
+                        }
+                    } else if (n.tip == EntityTipi::KURE) {
+                        if (n.cizgiler) DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.5f, 16, 16, n.cizgiRengi);
+                        if (secili) {
+                            DrawSphereWires((Vector3){ 0.0f, 0.0f, 0.0f }, 0.52f, 16, 16, secimTuruncusu);
+                        }
+                    } else if (n.tip == EntityTipi::SILINDIR) {
+                        if (n.cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.5f, 0.5f, 1.0f, 20, n.cizgiRengi);
+                        if (secili) {
+                            DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.52f, 0.52f, 1.02f, 20, secimTuruncusu);
+                        }
+                    } else if (n.tip == EntityTipi::UCGEN) {
+                        if (n.cizgiler) DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.6f, 1.0f, 4, n.cizgiRengi);
+                        if (secili) {
+                            DrawCylinderWires((Vector3){ 0.0f, -0.5f, 0.0f }, 0.0f, 0.62f, 1.02f, 4, secimTuruncusu);
+                        }
+                    } else if (n.tip == EntityTipi::DUZLEM) {
+                        if (n.cizgiler) DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.0f, 0.04f, 1.0f, n.cizgiRengi);
+                        if (secili) {
+                            DrawCubeWires((Vector3){ 0.0f, 0.0f, 0.0f }, 1.02f, 0.06f, 1.02f, secimTuruncusu);
+                        }
+                    }
+                rlPopMatrix();
+            }
         }
     }
 }
@@ -719,8 +843,8 @@ void Engine::CizToolbar() {
                     DrawRectangleRec(itemRect, (Color){ 0, 120, 215, 255 });
 
                     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                        Vector3 olusmaPozisyonu = (Vector3){ 0.0f, 4.0f, 0.0f };
-                        IsikEkle(lightTipleri[i], olusmaPozisyonu, lightRenkleri[i], 1.5f, 18.0f);
+                        Vector3 olusmaPozisyonu = (Vector3){ 0.0f, 5.0f, 0.0f };
+                        IsikEkle(lightTipleri[i], olusmaPozisyonu, lightRenkleri[i], 2.0f, 18.0f);
                         seciliNesneIndeksi = static_cast<int>(nesneler.size()) - 1;
                         aktifMenu = MenuDurumu::KAPALI;
                     }
@@ -732,44 +856,44 @@ void Engine::CizToolbar() {
 }
 
 void Engine::Render() {
-    // ==========================================
-    // 1. PASS: GÖLGE DERİNLİK HARİTASI (SHADOWMAP)
-    // ==========================================
+    // ====================================================
+    // 1. PASS: GÖLGE DERİNLİK HARİTASI (SHADOWMAP PASS)
+    // ====================================================
     BeginTextureMode(golgeHaritasi);
         ClearBackground(WHITE);
         BeginMode3D(isikKamerasi);
-            // Işık kamerasının View-Projection matrisini kaydet
             Matrix lightView = rlGetMatrixModelview();
             Matrix lightProj = rlGetMatrixProjection();
             lightVP = MatrixMultiply(lightView, lightProj);
 
-            // Sahneyi derinlik shader'ı ile render et
-            BeginShaderMode(golgeShader);
-                SahneyiCiz(true);
-            EndShaderMode();
+            // Sahneyi derinlik tamponuna render et
+            SahneyiCiz(true);
         EndMode3D();
     EndTextureMode();
 
-    // ==========================================
-    // 2. PASS: ANA SAHNE VE AYDINLATMA / GÖLGELER
-    // ==========================================
+    // ====================================================
+    // 2. PASS: ANA SAHNE VE IŞIK / GÖLGE RENDERİ
+    // ====================================================
+    SetShaderValueMatrix(isikShader, lightVPLoc, lightVP);
+
+    // Shadow Map derinlik dokusunu Texture Slot 1'e bağla
+    rlEnableShader(isikShader.id);
+    int shadowSlot = 1;
+    rlActiveTextureSlot(shadowSlot);
+    rlEnableTexture(golgeHaritasi.depth.id);
+    rlSetUniformSampler(shadowMapLoc, shadowSlot);
+
     BeginDrawing();
         ClearBackground((Color){ 24, 26, 31, 255 });
-
-        // LightVP matrisini ve ShadowMap derinlik dokusunu Shader'a gönder
-        SetShaderValueMatrix(isikShader, lightVPLoc, lightVP);
-        SetShaderValueTexture(isikShader, shadowMapLoc, golgeHaritasi.depth);
 
         BeginMode3D(kamera);
 
             DrawGrid(24, 1.0f);
 
-            // 3D Nesneleri Işık ve Gölge Shader'ı ile çiz
-            BeginShaderMode(isikShader);
-                SahneyiCiz(false);
-            EndShaderMode();
+            // 3D Nesneleri Işık & Gölge Shader'ı ile çiz
+            SahneyiCiz(false);
 
-            // Işık Kaynakları & Transform Gizmo (Her zaman en önde ve net)
+            // Işık Kaynağı Simgeleri & Transform Gizmo
             for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
                 if (nesneler[i].tip == EntityTipi::ISIK_KAYNAGI) {
                     bool secili = (i == seciliNesneIndeksi);
@@ -783,9 +907,11 @@ void Engine::Render() {
 
         EndMode3D();
 
-        // ==========================================
+        rlDisableShader();
+
+        // ====================================================
         // 3. 2D HUD VE ARAYÜZ
-        // ==========================================
+        // ====================================================
         DrawRectangleRounded((Rectangle){ 20.0f, 50.0f, 520.0f, 105.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
         DrawRectangleRoundedLines((Rectangle){ 20.0f, 50.0f, 520.0f, 105.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
 
