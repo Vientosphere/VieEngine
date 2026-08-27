@@ -50,6 +50,7 @@ private:
     void InitShader();
     void InitShadowmap();
     void InitMeshes();
+    void GuncelleIsikKamerasi();
     void Update();
     void Render();
     void SahneyiCiz(bool golgePassi);
@@ -78,7 +79,7 @@ private:
 
     MenuDurumu aktifMenu;
 
-    // Aydınlatma Shader & Shadow Mapping
+    // Aydınlatma Shader & Dynamic Multi-Mode Shadow Mapping
     Shader isikShader;
     RenderTexture2D golgeHaritasi;
     Camera3D isikKamerasi;
@@ -87,6 +88,8 @@ private:
     int shadowMapLoc;
     int shadowResLoc;
     int ortamIsigiLoc;
+    int golgeIsikLoc;
+    int golgeIsikIndeksi;
 
     // Primitive GPU Meshes & Materials
     Mesh kupMesh;

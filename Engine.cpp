@@ -28,7 +28,7 @@ void main() {
 }
 )";
 
-// 2. Ana Aydınlatma & Gölge Fragment Shader (Physical Attenuation, Inner/Outer Cone, PCF Soft Shadow)
+// 2. Ana Aydınlatma & Gölge Fragment Shader (Physical Attenuation, Multi-Mode Perspective/Orthographic Shadows, PCF)
 static const char* isikFSKaynak = R"(
 #version 330
 #define MAKSIMUM_ISIK_SAYISI 8
@@ -57,13 +57,20 @@ uniform vec3 viewPos;
 uniform mat4 lightVP;
 uniform sampler2D shadowMap;
 uniform int shadowMapResolution;
+uniform int golgeIsikIndeksi;
 uniform Isik isiklar[MAKSIMUM_ISIK_SAYISI];
 
 out vec4 finalColor;
 
-// 16-Sample PCF (Percentage Closer Filtering) Yumuşak Gölge Hesaplayıcı
+// 16-Sample PCF Yumuşak Gölge Hesaplayıcı (Perspective & Orthographic Uyumlu)
 float HesaplaGolge(vec3 fragPos, vec3 normal, vec3 isikYonu) {
     vec4 fragPosLightSpace = lightVP * vec4(fragPos, 1.0);
+
+    // Perspektif projeksiyonda ışığın arkasında kalan noktaları filtrele
+    if (fragPosLightSpace.w <= 0.0) {
+        return 1.0;
+    }
+
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = (projCoords * 0.5) + 0.5;
 
@@ -71,9 +78,9 @@ float HesaplaGolge(vec3 fragPos, vec3 normal, vec3 isikYonu) {
         return 1.0;
     }
 
-    // Eğim bazlı adaptif shadow bias
+    // Yüzey normali ve ışık açısına göre adaptif bias
     float cosTheta = clamp(dot(normal, isikYonu), 0.0, 1.0);
-    float bias = max(0.0035 * (1.0 - cosTheta), 0.0008);
+    float bias = max(0.0025 * (1.0 - cosTheta), 0.0005);
 
     float golgeFaktoru = 0.0;
     vec2 texelSize = vec2(1.0 / float(shadowMapResolution));
@@ -103,27 +110,31 @@ void main() {
             float golge = 1.0;
 
             if (isiklar[i].tip == 2) {
-                // Environment / Directional Light (Güneş Işığı & Dinamik Gölge)
+                // Environment / Directional Light (Güneş Işığı)
                 isikYonu = normalize(isiklar[i].pozisyon - isiklar[i].hedef);
-                golge = HesaplaGolge(fragPosition, normal, isikYonu);
             } else {
-                // Point & Spot Light (Inverse Square Law Falloff)
+                // Point & Spot Light (Inverse Square Falloff)
                 vec3 fark = isiklar[i].pozisyon - fragPosition;
                 float mesafe = length(fark);
                 isikYonu = normalize(fark);
 
                 float yaricap = max(isiklar[i].zayiflamaYaricapi, 0.1);
                 float mesafeOrani = clamp(1.0 - pow(mesafe / yaricap, 4.0), 0.0, 1.0);
-                sonum = (mesafeOrani * mesafeOrani) / (mesafe * mesafe + 1.0) * (yaricap * 0.7);
+                sonum = (mesafeOrani * mesafeOrani) / (mesafe * mesafe + 1.0) * (yaricap * 0.75);
 
                 if (isiklar[i].tip == 1) {
-                    // Spot Light Inner & Outer Cone Açı Yumuşatması
+                    // Spot Light Cone Falloff
                     vec3 spotYonu = normalize(isiklar[i].hedef - isiklar[i].pozisyon);
                     float theta = dot(-isikYonu, spotYonu);
                     float epsilon = isiklar[i].icKoniAcisi - isiklar[i].disKoniAcisi;
                     float spotYogunluk = clamp((theta - isiklar[i].disKoniAcisi) / max(epsilon, 0.0001), 0.0, 1.0);
                     sonum *= spotYogunluk;
                 }
+            }
+
+            // Aktif gölge kaynağı ise dinamik gölgeyi hesapla
+            if (i == golgeIsikIndeksi) {
+                golge = HesaplaGolge(fragPosition, normal, isikYonu);
             }
 
             // Diffuse (Lambert)
@@ -182,7 +193,7 @@ Engine::Engine()
       kameraHizi(10.0f), kameraYaw(45.0f), kameraPitch(-30.0f),
       seciliNesneIndeksi(-1), aktifMod(TransformModu::KONUM),
       suruklenenEksen(EksenTipi::YOK), sonFarePozisyonu((Vector2){ 0.0f, 0.0f }),
-      aktifMenu(MenuDurumu::KAPALI) {
+      aktifMenu(MenuDurumu::KAPALI), golgeIsikIndeksi(0) {
 
     kamera = { 0 };
     kamera.position = (Vector3){ 9.0f, 8.0f, 9.0f };
@@ -195,13 +206,7 @@ Engine::Engine()
     kameraPitch = asinf(bakisYonu.y) * RAD2DEG;
     kameraYaw   = atan2f(bakisYonu.x, bakisYonu.z) * RAD2DEG;
 
-    // Gölge Işık Kamerası (Ortografik Güneş Projeksiyonu)
     isikKamerasi = { 0 };
-    isikKamerasi.position = (Vector3){ 14.0f, 20.0f, 14.0f };
-    isikKamerasi.target = (Vector3){ 0.0f, 0.0f, 0.0f };
-    isikKamerasi.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    isikKamerasi.fovy = 40.0f;
-    isikKamerasi.projection = CAMERA_ORTHOGRAPHIC;
 }
 
 Engine::~Engine() {
@@ -242,6 +247,7 @@ void Engine::InitShader() {
     shadowMapLoc = GetShaderLocation(isikShader, "shadowMap");
     shadowResLoc = GetShaderLocation(isikShader, "shadowMapResolution");
     ortamIsigiLoc = GetShaderLocation(isikShader, "ortamIsigi");
+    golgeIsikLoc = GetShaderLocation(isikShader, "golgeIsikIndeksi");
 
     int res = SHADOWMAP_BOYUT;
     SetShaderValue(isikShader, shadowResLoc, &res, SHADER_UNIFORM_INT);
@@ -293,11 +299,11 @@ void Engine::Init(int genislik, int yukseklik, const char* baslik) {
     silindir.renk = (Color){ 60, 200, 110, 255 };
     NesneEkle(silindir);
 
-    // 5. Sarı Güneş Işığı (Directional Sun Light with Deep Shadows)
+    // 5. Sarı Güneş Işığı (Directional Sun Light)
     IsikEkle(IsikTipi::ORTAM_GUNES, (Vector3){ 14.0f, 20.0f, 14.0f }, (Color){ 255, 245, 225, 255 }, 1.5f, 60.0f);
 
-    // 6. Sıcak Noktasal Işık (Point Light with Attenuation Falloff)
-    IsikEkle(IsikTipi::NOKTASAL, (Vector3){ 0.0f, 3.5f, 2.0f }, (Color){ 255, 200, 100, 255 }, 1.2f, 10.0f);
+    // 6. Sıcak Noktasal Işık (Point Light with Real Perspective Shadow & Attenuation)
+    IsikEkle(IsikTipi::NOKTASAL, (Vector3){ 0.0f, 4.0f, 1.5f }, (Color){ 255, 200, 100, 255 }, 1.4f, 16.0f);
 
     calisiyorMu = true;
 }
@@ -359,6 +365,51 @@ void Engine::IsikEkle(IsikTipi tip, Vector3 pos, Color renk, float parlaklik, fl
     NesneEkle(isikObjesi);
 }
 
+void Engine::GuncelleIsikKamerasi() {
+    if (isiklar.empty()) return;
+
+    // Seçili obje bir ışık kaynağı ise gölge kamerasını doğrudan o ışığa bağla
+    int aktifGolge = 0;
+    if (seciliNesneIndeksi != -1 && seciliNesneIndeksi < static_cast<int>(nesneler.size())) {
+        const Entity& secili = nesneler[seciliNesneIndeksi];
+        if (secili.tip == EntityTipi::ISIK_KAYNAGI && secili.bagliIsikIndeksi >= 0 && secili.bagliIsikIndeksi < static_cast<int>(isiklar.size())) {
+            aktifGolge = secili.bagliIsikIndeksi;
+        }
+    }
+
+    golgeIsikIndeksi = aktifGolge;
+    const Isik& aktifIsik = isiklar[aktifGolge];
+
+    if (aktifIsik.tip == IsikTipi::ORTAM_GUNES) {
+        // Güneş Işığı -> Ortografik Projeksiyon (Paralel Güneş Işınları)
+        isikKamerasi.projection = CAMERA_ORTHOGRAPHIC;
+        Vector3 sunDir = Vector3Normalize(Vector3Subtract(aktifIsik.pozisyon, aktifIsik.hedef));
+        if (Vector3Length(sunDir) < 0.1f) sunDir = (Vector3){ 0.5f, 1.0f, 0.5f };
+
+        isikKamerasi.position = Vector3Scale(sunDir, 35.0f);
+        isikKamerasi.target = (Vector3){ 0.0f, 0.0f, 0.0f };
+        isikKamerasi.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+        isikKamerasi.fovy = 45.0f;
+    }
+    else if (aktifIsik.tip == IsikTipi::SPOT) {
+        // Spot Işık -> Spot Konisi Boyunca Perspektif Gölge Projeksiyonu
+        isikKamerasi.projection = CAMERA_PERSPECTIVE;
+        isikKamerasi.position = aktifIsik.pozisyon;
+        isikKamerasi.target = aktifIsik.hedef;
+        isikKamerasi.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+        isikKamerasi.fovy = fmaxf(20.0f, aktifIsik.disKoniAcisi * 2.0f);
+    }
+    else {
+        // Noktasal Işık (Point Light) -> Işık Merkezinden Nesnelere Doğru Radyal Perspektif Gölge
+        isikKamerasi.projection = CAMERA_PERSPECTIVE;
+        isikKamerasi.position = aktifIsik.pozisyon;
+        // Zemine ve nesnelere doğru geniş açılı perspektif bakış
+        isikKamerasi.target = (Vector3){ aktifIsik.pozisyon.x, aktifIsik.pozisyon.y - 10.0f, aktifIsik.pozisyon.z };
+        isikKamerasi.up = (Vector3){ 0.0f, 0.0f, 1.0f };
+        isikKamerasi.fovy = 120.0f;
+    }
+}
+
 EksenTipi Engine::AlgilaGizmoEkseni(const Entity& nesne, Ray ray) {
     Vector3 pos = nesne.pozisyon;
     
@@ -375,7 +426,7 @@ EksenTipi Engine::AlgilaGizmoEkseni(const Entity& nesne, Ray ray) {
     if (!(nesne.tip == EntityTipi::DUZLEM && aktifMod == TransformModu::OLCEK)) {
         BoundingBox yBox = {
             (Vector3){ pos.x - yaricap, pos.y + mesafe - yaricap, pos.z - yaricap },
-            (Vector3){ pos.x + yaricap, pos.y + mesafe + yaricap, pos.z + yaricap }
+            (Vector3){ pos.x + maxBoyut + yaricap, pos.y + mesafe + yaricap, pos.z + yaricap }
         };
         if (GetRayCollisionBox(ray, yBox).hit) return EksenTipi::Y;
     }
@@ -526,10 +577,6 @@ void Engine::Update() {
 
                     if (secili.bagliIsikIndeksi >= 0 && secili.bagliIsikIndeksi < static_cast<int>(isiklar.size())) {
                         isiklar[secili.bagliIsikIndeksi].pozisyon = secili.pozisyon;
-                        // Güneş Işığı ise Gölge Kamerasını da ışığın pozisyonuna senkronize et
-                        if (isiklar[secili.bagliIsikIndeksi].tip == IsikTipi::ORTAM_GUNES) {
-                            isikKamerasi.position = secili.pozisyon;
-                        }
                     }
                 }
                 else if (aktifMod == TransformModu::ROTASYON) {
@@ -583,9 +630,13 @@ void Engine::Update() {
         }
     }
 
+    // Gölge Kamerasını seçili veya birincil ışığa göre gerçek zamanlı kalibre et
+    GuncelleIsikKamerasi();
+
     // Shader ve Işık GPU Güncellemeleri
     float camPos[3] = { kamera.position.x, kamera.position.y, kamera.position.z };
     SetShaderValue(isikShader, isikShader.locs[SHADER_LOC_VECTOR_VIEW], camPos, SHADER_UNIFORM_VEC3);
+    SetShaderValue(isikShader, golgeIsikLoc, &golgeIsikIndeksi, SHADER_UNIFORM_INT);
 
     for (int i = 0; i < static_cast<int>(isiklar.size()); i++) {
         GuncelleIsikGPU(isikShader, isiklar[i]);
@@ -887,10 +938,13 @@ void Engine::Render() {
             for (int i = 0; i < static_cast<int>(nesneler.size()); i++) {
                 if (nesneler[i].tip == EntityTipi::ISIK_KAYNAGI) {
                     bool secili = (i == seciliNesneIndeksi);
-                    DrawSphere(nesneler[i].pozisyon, 0.35f, (Color){ 255, 230, 80, 255 });
+                    bool golgeVeren = (nesneler[i].bagliIsikIndeksi == golgeIsikIndeksi);
+                    Color isikRengi = golgeVeren ? (Color){ 255, 230, 80, 255 } : (Color){ 200, 210, 230, 255 };
+
+                    DrawSphere(nesneler[i].pozisyon, 0.35f, isikRengi);
                     DrawSphereWires(nesneler[i].pozisyon, 0.38f, 10, 10, WHITE);
                     if (secili) {
-                        DrawSphereWires(nesneler[i].pozisyon, 0.48f, 12, 12, (Color){ 255, 140, 0, 255 });
+                        DrawSphereWires(nesneler[i].pozisyon, 0.50f, 12, 12, (Color){ 255, 140, 0, 255 });
                     }
                 }
 
@@ -919,22 +973,25 @@ void Engine::Render() {
         DrawText(TextFormat("Aktif Mod: %s", modAdi), 35, 84, 14, modRengi);
         DrawText("Kamera: Sag Tik + WASD/QE | Tekerlek: Hiz | ESC: Cikis", 35, 106, 12, (Color){ 255, 205, 80, 255 });
 
-        // Sol Alt: Seçili Obje Bilgisi
-        DrawRectangleRounded((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 510.0f, 65.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
-        DrawRectangleRoundedLines((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 510.0f, 65.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
+        // Sol Alt: Seçili Obje & Gölge Işığı Bilgisi
+        DrawRectangleRounded((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 530.0f, 65.0f }, 0.15f, 4, (Color){ 18, 20, 26, 210 });
+        DrawRectangleRoundedLines((Rectangle){ 20.0f, (float)(ekranYuksekligi - 85), 530.0f, 65.0f }, 0.15f, 4, (Color){ 55, 60, 75, 255 });
+
+        const char* golgeModuMetni = (isiklar[golgeIsikIndeksi].tip == IsikTipi::ORTAM_GUNES) ? "Gunes (Orthographic)" :
+                                     (isiklar[golgeIsikIndeksi].tip == IsikTipi::SPOT) ? "Spot (Perspective)" : "Noktasal (Perspective Radial)";
 
         if (seciliNesneIndeksi != -1) {
             const Entity& secili = nesneler[seciliNesneIndeksi];
             const char* tipMetni = (secili.tip == EntityTipi::ISIK_KAYNAGI) ? "ISIK KAYNAGI" : "3D NESNE";
             Color baslikRenk = (secili.tip == EntityTipi::ISIK_KAYNAGI) ? YELLOW : ORANGE;
 
-            DrawText(TextFormat("SECILI %s #%i (Sahne: %i Obje, %i Isik | Dynamic Shadowmap: Aktif)", tipMetni, seciliNesneIndeksi, (int)nesneler.size(), (int)isiklar.size()), 35, ekranYuksekligi - 75, 14, baslikRenk);
+            DrawText(TextFormat("SECILI %s #%i | Golge Kaynagi: Isik #%i [%s]", tipMetni, seciliNesneIndeksi, golgeIsikIndeksi, golgeModuMetni), 35, ekranYuksekligi - 75, 13, baslikRenk);
             DrawText(TextFormat("Konum: (%.1f, %.1f, %.1f) | Rot: (%.0f, %.0f, %.0f) | Boyut: (%.1f, %.1f, %.1f)", 
                      secili.pozisyon.x, secili.pozisyon.y, secili.pozisyon.z,
                      secili.rotasyon.x, secili.rotasyon.y, secili.rotasyon.z,
                      secili.olcek.x, secili.olcek.y, secili.olcek.z), 35, ekranYuksekligi - 52, 12, (Color){ 220, 230, 245, 255 });
         } else {
-            DrawText(TextFormat("Secili Obje: Yok (Toplam Sahne: %i Obje | %i Aktif Isik | 2048p Soft Shadows)", (int)nesneler.size(), (int)isiklar.size()), 35, ekranYuksekligi - 60, 14, (Color){ 130, 140, 160, 255 });
+            DrawText(TextFormat("Sahne: %i Obje, %i Isik | Aktif Golge: Isik #%i [%s]", (int)nesneler.size(), (int)isiklar.size(), golgeIsikIndeksi, golgeModuMetni), 35, ekranYuksekligi - 60, 13, (Color){ 220, 230, 245, 255 });
         }
 
         CizSagAltGizmo();
