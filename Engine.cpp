@@ -196,29 +196,53 @@ void Engine::Update() {
 
             if (seciliNesneIndeksi != -1 && seciliNesneIndeksi < static_cast<int>(nesneler.size())) {
                 Entity& secili = nesneler[seciliNesneIndeksi];
-                float hassasiyet = 0.05f;
-                float suruklemeMiktari = (fareDelta.x - fareDelta.y) * hassasiyet;
 
-                // Shift ile daha hassas ayar
-                if (IsKeyDown(KEY_LEFT_SHIFT)) suruklemeMiktari *= 0.25f;
+                // Hassasiyeti dengeli ve pürüzsüz seviyeye çekiyoruz
+                float hassasiyet = 0.015f;
+                if (IsKeyDown(KEY_LEFT_SHIFT)) hassasiyet *= 0.25f; // İnce ayar
+
+                // Kameranın yatay açısına göre farenin sağa/sola hareketini doğru eksenle eşleştir
+                float yawRad = kameraYaw * DEG2RAD;
+                float fareYatayEtki = fareDelta.x * cosf(yawRad) + fareDelta.y * sinf(yawRad);
 
                 if (aktifMod == TransformModu::KONUM) {
-                    if (suruklenenEksen == EksenTipi::X) secili.pozisyon.x += fareDelta.x * hassasiyet;
-                    if (suruklenenEksen == EksenTipi::Y) secili.pozisyon.y -= fareDelta.y * hassasiyet;
-                    if (suruklenenEksen == EksenTipi::Z) secili.pozisyon.z += (fareDelta.x + fareDelta.y) * hassasiyet;
+                    if (suruklenenEksen == EksenTipi::X) {
+                        // Sağa çekince +X, sola çekince -X
+                        secili.pozisyon.x += fareDelta.x * hassasiyet;
+                    }
+                    else if (suruklenenEksen == EksenTipi::Y) {
+                        // Yukarı çekince +Y, aşağı çekince -Y
+                        secili.pozisyon.y -= fareDelta.y * hassasiyet;
+                    }
+                    else if (suruklenenEksen == EksenTipi::Z) {
+                        // Mavi Z Ekseni Düzeltildi: İleri/aşağı çekince +Z, yukarı/geri çekince -Z
+                        secili.pozisyon.z -= fareDelta.y * hassasiyet;
+                    }
                 }
                 else if (aktifMod == TransformModu::ROTASYON) {
-                    float rotSens = 0.8f;
-                    if (suruklenenEksen == EksenTipi::X) secili.rotasyon.x -= fareDelta.y * rotSens;
-                    if (suruklenenEksen == EksenTipi::Y) secili.rotasyon.y += fareDelta.x * rotSens;
-                    if (suruklenenEksen == EksenTipi::Z) secili.rotasyon.z += (fareDelta.x - fareDelta.y) * rotSens;
+                    float rotHassasiyet = 0.4f;
+                    if (IsKeyDown(KEY_LEFT_SHIFT)) rotHassasiyet *= 0.25f;
+
+                    if (suruklenenEksen == EksenTipi::X) secili.rotasyon.x += fareDelta.y * rotHassasiyet;
+                    if (suruklenenEksen == EksenTipi::Y) secili.rotasyon.y -= fareDelta.x * rotHassasiyet;
+                    if (suruklenenEksen == EksenTipi::Z) secili.rotasyon.z += fareDelta.x * rotHassasiyet;
                 }
                 else if (aktifMod == TransformModu::OLCEK) {
-                    if (suruklenenEksen == EksenTipi::X) secili.olcek.x = fmaxf(0.1f, secili.olcek.x + fareDelta.x * hassasiyet);
-                    if (suruklenenEksen == EksenTipi::Y) secili.olcek.y = fmaxf(0.1f, secili.olcek.y - fareDelta.y * hassasiyet);
-                    if (suruklenenEksen == EksenTipi::Z) secili.olcek.z = fmaxf(0.1f, secili.olcek.z + (fareDelta.x + fareDelta.y) * hassasiyet);
-                    if (suruklenenEksen == EksenTipi::MERKEZ) {
-                        float artis = suruklemeMiktari;
+                    float olcekHassasiyet = 0.02f;
+                    if (IsKeyDown(KEY_LEFT_SHIFT)) olcekHassasiyet *= 0.25f;
+
+                    if (suruklenenEksen == EksenTipi::X) {
+                        secili.olcek.x = fmaxf(0.1f, secili.olcek.x + fareDelta.x * olcekHassasiyet);
+                    }
+                    else if (suruklenenEksen == EksenTipi::Y) {
+                        secili.olcek.y = fmaxf(0.1f, secili.olcek.y - fareDelta.y * olcekHassasiyet);
+                    }
+                    else if (suruklenenEksen == EksenTipi::Z) {
+                        // Mavi Z Ölçeği Düzeltildi
+                        secili.olcek.z = fmaxf(0.1f, secili.olcek.z - fareDelta.y * olcekHassasiyet);
+                    }
+                    else if (suruklenenEksen == EksenTipi::MERKEZ) {
+                        float artis = (fareDelta.x - fareDelta.y) * olcekHassasiyet;
                         secili.olcek.x = fmaxf(0.1f, secili.olcek.x + artis);
                         secili.olcek.y = fmaxf(0.1f, secili.olcek.y + artis);
                         secili.olcek.z = fmaxf(0.1f, secili.olcek.z + artis);
