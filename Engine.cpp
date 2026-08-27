@@ -359,89 +359,107 @@ void Engine::CizToolbar() {
     DrawLine(0, 38, ekranGenisligi, 38, (Color){ 50, 55, 68, 255 });
 
     // Sol Başlık
-    DrawText("VIENTO ENGINE", 18, 10, 16, (Color){ 0, 230, 255, 255 });
+    DrawText("VIENTO ENGINE", 18, 11, 16, (Color){ 0, 230, 255, 255 });
 
-    // "Add" Menü Butonu
-    Rectangle addBtn = { 150.0f, 5.0f, 75.0f, 28.0f };
+    // "+ Add" Menü Butonu
+    Rectangle addBtn = { 160.0f, 5.0f, 75.0f, 28.0f };
     bool addHover = CheckCollisionPointRec(fare, addBtn);
     
     if (aktifMenu != MenuDurumu::KAPALI || addHover) {
         DrawRectangleRec(addBtn, (Color){ 45, 50, 65, 255 });
     }
-    DrawText("+ Add", 168, 11, 14, (Color){ 240, 245, 255, 255 });
+    DrawText("+ Add", 178, 12, 14, (Color){ 240, 245, 255, 255 });
 
-    // Buton Tıklaması
+    // Buton Tıklaması ile menüyü aç/kapat
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && addHover) {
         aktifMenu = (aktifMenu == MenuDurumu::KAPALI) ? MenuDurumu::ADD_ANA : MenuDurumu::KAPALI;
     }
 
     // 2. Açılır Menü Mantığı
     if (aktifMenu != MenuDurumu::KAPALI) {
-        // Ana Add Menüsü (Shapes & Lights)
-        Rectangle anaMenuKutusu = { 150.0f, 38.0f, 140.0f, 70.0f };
+        // Ana Menü Kutusu (Shapes ve Lights butonları)
+        Rectangle anaMenuKutusu = { 160.0f, 38.0f, 130.0f, 70.0f };
         DrawRectangleRec(anaMenuKutusu, (Color){ 25, 28, 36, 250 });
         DrawRectangleLinesEx(anaMenuKutusu, 1.0f, (Color){ 60, 65, 80, 255 });
 
-        Rectangle shapesItem = { 150.0f, 40.0f, 140.0f, 32.0f };
-        Rectangle lightsItem = { 150.0f, 72.0f, 140.0f, 32.0f };
+        Rectangle shapesItem = { 160.0f, 40.0f, 130.0f, 32.0f };
+        Rectangle lightsItem = { 160.0f, 72.0f, 130.0f, 32.0f };
+
+        // Alt menü alanları (Fare alt menü üzerindeyken açık kalması için)
+        Rectangle shapesAltMenuAlani = { 290.0f, 38.0f, 140.0f, 140.0f };
+        Rectangle lightsAltMenuAlani = { 290.0f, 70.0f, 160.0f, 110.0f };
 
         bool hoverShapes = CheckCollisionPointRec(fare, shapesItem);
         bool hoverLights = CheckCollisionPointRec(fare, lightsItem);
+        bool insideShapesSub = CheckCollisionPointRec(fare, shapesAltMenuAlani);
+        bool insideLightsSub = CheckCollisionPointRec(fare, lightsAltMenuAlani);
 
+        // Menü geçiş mantığı: Sadece o satırın üzerindeyken veya o alt menünün içindeyken aktif et
         if (hoverShapes) {
             aktifMenu = MenuDurumu::ADD_SHAPES;
+        } else if (hoverLights) {
+            aktifMenu = MenuDurumu::ADD_LIGHTS;
+        } else if (!insideShapesSub && !insideLightsSub && !CheckCollisionPointRec(fare, anaMenuKutusu)) {
+            // Eğer fare ana menünün ve alt menülerin tamamen dışındaysa ve tıklandıysa kapat
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                aktifMenu = MenuDurumu::KAPALI;
+            }
+        }
+
+        // Ana Menü Öğelerini Çiz
+        if (aktifMenu == MenuDurumu::ADD_SHAPES || hoverShapes) {
             DrawRectangleRec(shapesItem, (Color){ 45, 52, 70, 255 });
         }
-        if (hoverLights) {
-            aktifMenu = MenuDurumu::ADD_LIGHTS;
+        if (aktifMenu == MenuDurumu::ADD_LIGHTS || hoverLights) {
             DrawRectangleRec(lightsItem, (Color){ 45, 52, 70, 255 });
         }
 
-        DrawText("Shapes        >", 162, 48, 13, (Color){ 230, 235, 245, 255 });
-        DrawText("Lights          >", 162, 80, 13, (Color){ 230, 235, 245, 255 });
+        DrawText("Shapes        >", 172, 49, 13, (Color){ 230, 235, 245, 255 });
+        DrawText("Lights          >", 172, 81, 13, (Color){ 230, 235, 245, 255 });
 
-        // 3. Alt Menü: Shapes (İşlevsel)
-        if (aktifMenu == MenuDurumu::ADD_SHAPES || CheckCollisionPointRec(fare, (Rectangle){ 290.0f, 38.0f, 130.0f, 130.0f })) {
-            Rectangle shapesMenuKutusu = { 290.0f, 38.0f, 130.0f, 130.0f };
-            DrawRectangleRec(shapesMenuKutusu, (Color){ 28, 32, 42, 250 });
-            DrawRectangleLinesEx(shapesMenuKutusu, 1.0f, (Color){ 60, 65, 80, 255 });
+        // 3. Alt Menü: SADECE Shapes Aktifken Çiz
+        if (aktifMenu == MenuDurumu::ADD_SHAPES) {
+            DrawRectangleRec(shapesAltMenuAlani, (Color){ 28, 32, 42, 250 });
+            DrawRectangleLinesEx(shapesAltMenuAlani, 1.0f, (Color){ 60, 65, 80, 255 });
 
             const char* shapeIsimleri[] = { "Cube", "Sphere", "Cylinder", "Triangle" };
             EntityTipi shapeTipleri[] = { EntityTipi::KUP, EntityTipi::KURE, EntityTipi::SILINDIR, EntityTipi::UCGEN };
 
             for (int i = 0; i < 4; i++) {
-                Rectangle itemRect = { 290.0f, 40.0f + (i * 31.0f), 130.0f, 30.0f };
-                if (CheckCollisionPointRec(fare, itemRect)) {
+                Rectangle itemRect = { 290.0f, 40.0f + (i * 33.0f), 140.0f, 32.0f };
+                bool itemHover = CheckCollisionPointRec(fare, itemRect);
+
+                if (itemHover) {
                     DrawRectangleRec(itemRect, (Color){ 0, 120, 215, 255 });
 
                     // Şekil Ekleme Tıklaması
                     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                         Entity yeniNesne(shapeTipleri[i]);
-                        // Kameranın baktığı hedef noktasının biraz üstünde oluştur
                         yeniNesne.pozisyon = (Vector3){ 0.0f, 1.0f, 0.0f };
                         NesneEkle(yeniNesne);
-                        seciliNesneIndeksi = static_cast<int>(nesneler.size()) - 1; // Yeni nesneyi anında seç
+                        seciliNesneIndeksi = static_cast<int>(nesneler.size()) - 1;
                         aktifMenu = MenuDurumu::KAPALI;
                     }
                 }
-                DrawText(shapeIsimleri[i], 305, 48 + (i * 31), 13, WHITE);
+                DrawText(shapeIsimleri[i], 305, 49 + (i * 33), 13, WHITE);
             }
         }
 
-        // 4. Alt Menü: Lights (Gelecekte kodlanacak liste)
-        if (aktifMenu == MenuDurumu::ADD_LIGHTS || CheckCollisionPointRec(fare, (Rectangle){ 290.0f, 70.0f, 150.0f, 100.0f })) {
-            Rectangle lightsMenuKutusu = { 290.0f, 70.0f, 150.0f, 100.0f };
-            DrawRectangleRec(lightsMenuKutusu, (Color){ 28, 32, 42, 250 });
-            DrawRectangleLinesEx(lightsMenuKutusu, 1.0f, (Color){ 60, 65, 80, 255 });
+        // 4. Alt Menü: SADECE Lights Aktifken Çiz
+        else if (aktifMenu == MenuDurumu::ADD_LIGHTS) {
+            DrawRectangleRec(lightsAltMenuAlani, (Color){ 28, 32, 42, 250 });
+            DrawRectangleLinesEx(lightsAltMenuAlani, 1.0f, (Color){ 60, 65, 80, 255 });
 
             const char* lightIsimleri[] = { "Point Light", "Spot Light", "Environment Light" };
 
             for (int i = 0; i < 3; i++) {
-                Rectangle itemRect = { 290.0f, 72.0f + (i * 31.0f), 150.0f, 30.0f };
-                if (CheckCollisionPointRec(fare, itemRect)) {
+                Rectangle itemRect = { 290.0f, 72.0f + (i * 33.0f), 160.0f, 32.0f };
+                bool itemHover = CheckCollisionPointRec(fare, itemRect);
+
+                if (itemHover) {
                     DrawRectangleRec(itemRect, (Color){ 50, 55, 70, 255 });
                 }
-                DrawText(lightIsimleri[i], 302, 80 + (i * 31), 12, (Color){ 160, 170, 190, 255 });
+                DrawText(lightIsimleri[i], 305, 81 + (i * 33), 12, (Color){ 160, 170, 190, 255 });
             }
         }
     }
