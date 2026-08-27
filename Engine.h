@@ -6,6 +6,8 @@
 #include "rlgl.h"
 #include <vector>
 
+#define SHADOWMAP_BOYUT 2048
+
 // Dönüşüm / Manipülasyon Modları
 enum class TransformModu {
     KONUM,    // Translate (W Tuşu)
@@ -41,13 +43,15 @@ public:
     void Shutdown();
 
     void NesneEkle(const Entity& yeniNesne);
-    void IsikEkle(IsikTipi tip, Vector3 pos, Color renk = WHITE, float parlaklik = 1.0f);
+    void IsikEkle(IsikTipi tip, Vector3 pos, Color renk = WHITE, float parlaklik = 1.5f, float zayiflamaYaricapi = 18.0f);
 
 private:
-    void InitShader(); // GLSL Aydınlatma shader'ı kurulumu
+    void InitShader();
+    void InitShadowmap();
     void Update();
     void Render();
-    void CizToolbar(); // Üst araç çubuğu ve açılır menüler
+    void SahneyiCiz(bool golgePassi);
+    void CizToolbar();
     void CizSagAltGizmo();
     void CizTransformGizmo(const Entity& nesne);
 
@@ -67,14 +71,20 @@ private:
     EksenTipi suruklenenEksen;
     Vector2 sonFarePozisyonu;
 
-    // Toolbar / Menü Yönetimi
     MenuDurumu aktifMenu;
 
-    // Aydınlatma Shader ve Işık Listesi
+    // Aydınlatma Shader & Shadow Mapping
     Shader isikShader;
-    int kameraPosLoc;
+    Shader golgeShader;
+    RenderTexture2D golgeHaritasi;
+    Camera3D isikKamerasi;
+    Matrix lightVP;
+    int lightVPLoc;
+    int shadowMapLoc;
+    int shadowResLoc;
+    int viewPosLoc;
     int ortamIsigiLoc;
-    std::vector<Isik> isiklar;
 
+    std::vector<Isik> isiklar;
     std::vector<Entity> nesneler;
 };

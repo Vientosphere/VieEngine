@@ -6,12 +6,12 @@
 
 // Işık Türleri
 enum class IsikTipi {
-    NOKTASAL,    // Point Light
-    SPOT,        // Spot Light
+    NOKTASAL,    // Point Light (Attenuation Radius / Falloff)
+    SPOT,        // Spot Light (Inner / Outer Cone)
     ORTAM_GUNES  // Environment / Directional Light
 };
 
-// Işık Kaynağı Yapısı
+// Işık Kaynağı Yapısı (Fiziksel / Optik Işık Parametreleri)
 struct Isik {
     bool aktif;
     IsikTipi tip;
@@ -19,16 +19,23 @@ struct Isik {
     Vector3 hedef;
     Color renk;
     float parlaklik;
-    float koniAcisi; // Spot ışık için
+    
+    // Unreal Engine / Fiziksel Işık Parametreleri:
+    float zayiflamaYaricapi; // Attenuation Radius (Point Light etki mesafesi)
+    float icKoniAcisi;       // Inner Cone Angle (Spot Light yumuşak geçiş başlangıcı)
+    float disKoniAcisi;      // Outer Cone Angle (Spot Light sınır açısı)
+    float kaynakYaricapi;    // Source Radius / Boyut
 
-    // Shader Uniform Konumları (GPU belleğindeki indeksler)
+    // Shader Uniform Lokasyonları
     int aktifLoc;
     int tipLoc;
     int posLoc;
     int hedefLoc;
     int renkLoc;
     int parlaklikLoc;
-    int koniAcisiLoc;
+    int zayiflamaYaricapiLoc;
+    int icKoniAcisiLoc;
+    int disKoniAcisiLoc;
 
     Isik()
         : aktif(true),
@@ -36,12 +43,16 @@ struct Isik {
           pozisyon((Vector3){ 0.0f, 5.0f, 0.0f }),
           hedef((Vector3){ 0.0f, 0.0f, 0.0f }),
           renk(WHITE),
-          parlaklik(1.0f),
-          koniAcisi(45.0f),
-          aktifLoc(-1), tipLoc(-1), posLoc(-1), hedefLoc(-1), renkLoc(-1), parlaklikLoc(-1), koniAcisiLoc(-1) {}
+          parlaklik(1.5f),
+          zayiflamaYaricapi(15.0f),
+          icKoniAcisi(25.0f),
+          disKoniAcisi(45.0f),
+          kaynakYaricapi(0.5f),
+          aktifLoc(-1), tipLoc(-1), posLoc(-1), hedefLoc(-1), renkLoc(-1), parlaklikLoc(-1),
+          zayiflamaYaricapiLoc(-1), icKoniAcisiLoc(-1), disKoniAcisiLoc(-1) {}
 };
 
-// Shader'a ışık verilerini gönderen yardımcı fonksiyonlar
+// Shader'a modern fiziksel ışık verilerini gönderen yardımcı fonksiyon
 inline void GuncelleIsikGPU(Shader shader, Isik& isik) {
     int aktifInt = isik.aktif ? 1 : 0;
     SetShaderValue(shader, isik.aktifLoc, &aktifInt, SHADER_UNIFORM_INT);
@@ -64,7 +75,11 @@ inline void GuncelleIsikGPU(Shader shader, Isik& isik) {
     SetShaderValue(shader, isik.renkLoc, renkVec, SHADER_UNIFORM_VEC4);
 
     SetShaderValue(shader, isik.parlaklikLoc, &isik.parlaklik, SHADER_UNIFORM_FLOAT);
-    
-    float cosKoni = cosf(isik.koniAcisi * DEG2RAD);
-    SetShaderValue(shader, isik.koniAcisiLoc, &cosKoni, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, isik.zayiflamaYaricapiLoc, &isik.zayiflamaYaricapi, SHADER_UNIFORM_FLOAT);
+
+    float cosIc = cosf(isik.icKoniAcisi * DEG2RAD);
+    SetShaderValue(shader, isik.icKoniAcisiLoc, &cosIc, SHADER_UNIFORM_FLOAT);
+
+    float cosDis = cosf(isik.disKoniAcisi * DEG2RAD);
+    SetShaderValue(shader, isik.disKoniAcisiLoc, &cosDis, SHADER_UNIFORM_FLOAT);
 }
